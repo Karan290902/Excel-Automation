@@ -9,19 +9,15 @@ from difflib import SequenceMatcher
 # =====================================================
 
 st.set_page_config(
-    page_title="Insurance Data Standardization Engine",
+    page_title="Insurance Standardization Engine",
     page_icon="📊",
     layout="wide"
 )
 
-# =====================================================
-# TITLE
-# =====================================================
-
 st.title("📊 Insurance Data Standardization Engine")
 
 st.write(
-    "Upload any insurance Excel file and automatically generate a fixed insurer-ready output format."
+    "Upload any insurance excel and convert it into fixed insurer output format."
 )
 
 # =====================================================
@@ -32,7 +28,7 @@ RATE_PER_LAKH = 320.3
 GST_RATE = 0.18
 
 # =====================================================
-# MASTER OUTPUT FORMAT
+# FINAL OUTPUT FORMAT
 # =====================================================
 
 MASTER_COLUMNS = [
@@ -90,36 +86,30 @@ MASTER_COLUMNS = [
 ]
 
 # =====================================================
-# SMART COLUMN ALIASES
+# COLUMN ALIASES
 # =====================================================
 
 ALIASES = {
 
     "Loan Account No.": [
 
-        "loan account",
-        "loan account no",
-        "loan account number",
-        "account no",
-        "account number",
         "a/c number",
+        "account number",
+        "account no",
+        "loan account",
         "membership no",
-        "membership number",
         "membership account no",
-        "member account no",
         "loan no",
-        "lan",
-        "customer id"
+        "lan"
 
     ],
 
     "Name of Primary Loan borrower": [
 
         "member name",
-        "customer name",
         "borrower name",
+        "customer name",
         "insured name",
-        "primary borrower",
         "name"
 
     ],
@@ -134,8 +124,13 @@ ALIASES = {
     "Date of Birth (DDMMMYYYY)": [
 
         "dob",
-        "date of birth",
-        "birth date"
+        "date of birth"
+
+    ],
+
+    "MAIN MEMBER AGE": [
+
+        "age"
 
     ],
 
@@ -143,37 +138,27 @@ ALIASES = {
 
         "mobile",
         "mobile number",
-        "phone",
-        "contact"
-
-    ],
-
-    "Address            (First Life)": [
-
-        "address",
-        "residence"
+        "phone"
 
     ],
 
     "Pincode": [
 
-        "pincode",
         "pin code",
-        "zip"
+        "pincode"
 
     ],
 
     "Branch Name": [
 
-        "branch",
-        "branch name"
+        "branch name",
+        "branch"
 
     ],
 
     "Loan Outstanding Amount": [
 
         "loan amount",
-        "outstanding amount",
         "loan outstanding"
 
     ],
@@ -182,18 +167,15 @@ ALIASES = {
 
         "sum assured",
         "sum insured",
-        "insured amount",
         "coverage",
-        "coverage amount",
         "calculation sa",
-        "aviva calculation sa",
-        "sa",
         "gtl"
 
     ],
 
     "Nominee Name": [
 
+        "nominee name",
         "nominee"
 
     ],
@@ -201,9 +183,9 @@ ALIASES = {
     "Relationship of the Nominee with Insurance covered Person": [
 
         "nominee relationship",
+        "nominee relatonship",
         "relationship",
-        "relation",
-        "nominee relation"
+        "relation"
 
     ],
 
@@ -215,34 +197,23 @@ ALIASES = {
 
     "Loan Disbursement Date (DDMMYYYY)": [
 
+        "loan start date",
         "loan start",
-        "disbursement",
-        "start date"
+        "disbursement"
 
     ],
 
     "Loan End date (DDMMYYYY)": [
 
-        "loan end",
-        "loan maturity",
-        "end date"
-
-    ],
-
-    "MAIN MEMBER AGE": [
-
-        "age",
-        "member age",
-        "insured age",
-        "borrower age",
-        "customer age"
+        "loan end date",
+        "loan end"
 
     ]
 
 }
 
 # =====================================================
-# AI SMART COLUMN DETECTION
+# AI MATCHING
 # =====================================================
 
 def similarity(a, b):
@@ -256,7 +227,6 @@ def similarity(a, b):
 def detect_column(columns, aliases):
 
     best_match = None
-
     best_score = 0
 
     for col in columns:
@@ -289,7 +259,6 @@ def detect_column(columns, aliases):
             if score > best_score:
 
                 best_score = score
-
                 best_match = col
 
     if best_score >= 0.45:
@@ -299,23 +268,74 @@ def detect_column(columns, aliases):
     return None
 
 # =====================================================
-# CLEAN DATAFRAME
+# CLEAN FUNCTIONS
 # =====================================================
 
-def clean_dataframe(df):
+def clean_money(series):
 
-    df.dropna(
-        how='all',
-        inplace=True
+    return pd.to_numeric(
+
+        series.astype(str)
+
+        .str.replace(",", "", regex=False)
+
+        .str.replace("₹", "", regex=False)
+
+        .str.replace("/-", "", regex=False)
+
+        .str.replace(" ", "", regex=False),
+
+        errors="coerce"
+
     )
 
-    df.dropna(
-        axis=1,
-        how='all',
-        inplace=True
+def clean_mobile(series):
+
+    return (
+
+        series.astype(str)
+
+        .str.replace(r"\D", "", regex=True)
+
+        .str[-10:]
+
     )
 
-    total_keywords = [
+def clean_aadhar(series):
+
+    return (
+
+        series.astype(str)
+
+        .str.replace(r"\D", "", regex=True)
+
+        .str[-12:]
+
+    )
+
+def clean_age(series):
+
+    return pd.to_numeric(
+        series,
+        errors="coerce"
+    ).fillna(0).astype(int)
+
+def clean_date(series):
+
+    dates = pd.to_datetime(
+        series,
+        errors="coerce"
+    )
+
+    return dates.dt.strftime("%d%b%Y")
+
+# =====================================================
+# REMOVE TOTAL ROWS
+# =====================================================
+
+def remove_total_rows(df):
+
+    keywords = [
 
         "total",
         "grand total",
@@ -330,65 +350,25 @@ def clean_dataframe(df):
 
     for col in df.columns:
 
-        mask = mask | df[col].astype(str).str.lower().str.contains(
+        mask = mask | (
 
-            "|".join(total_keywords),
+            df[col]
 
-            na=False
+            .astype(str)
+
+            .str.lower()
+
+            .str.contains(
+
+                "|".join(keywords),
+
+                na=False
+
+            )
 
         )
 
-    df = df[~mask]
-
-    return df
-
-# =====================================================
-# DATE CLEANING
-# =====================================================
-
-def clean_date_column(series):
-
-    cleaned = pd.to_datetime(
-        series,
-        errors='coerce'
-    )
-
-    return cleaned.dt.strftime('%d%b%Y')
-
-# =====================================================
-# MOBILE CLEANING
-# =====================================================
-
-def clean_mobile(series):
-
-    return (
-
-        series.astype(str)
-
-        .str.replace(r'\D', '', regex=True)
-
-        .str[-10:]
-
-    )
-
-# =====================================================
-# AGE CLEANING
-# =====================================================
-
-def clean_age(series):
-
-    cleaned = pd.to_numeric(
-
-        series,
-
-        errors='coerce'
-
-    ).fillna(0).astype(int)
-
-    return cleaned.clip(
-        lower=0,
-        upper=99
-    )
+    return df[~mask]
 
 # =====================================================
 # FILE UPLOAD
@@ -396,7 +376,7 @@ def clean_age(series):
 
 uploaded_files = st.file_uploader(
 
-    "📂 Upload Insurance Excel Files",
+    "📂 Upload Excel Files",
 
     type=["xlsx"],
 
@@ -422,11 +402,57 @@ if uploaded_files:
             # READ FILE
             # =====================================================
 
+            raw_df = pd.read_excel(
+                file,
+                header=None
+            )
+
+            # =====================================================
+            # FIND HEADER ROW
+            # =====================================================
+
+            header_row = 0
+
+            for i in range(min(10, len(raw_df))):
+
+                row_text = " ".join(
+
+                    raw_df.iloc[i]
+
+                    .astype(str)
+
+                    .str.lower()
+
+                    .tolist()
+
+                )
+
+                if (
+
+                    "member" in row_text
+
+                    or
+
+                    "name" in row_text
+
+                    or
+
+                    "account" in row_text
+
+                ):
+
+                    header_row = i
+                    break
+
+            # =====================================================
+            # READ AGAIN USING HEADER
+            # =====================================================
+
             df = pd.read_excel(
 
                 file,
 
-                header=0
+                header=header_row
 
             )
 
@@ -434,18 +460,33 @@ if uploaded_files:
             # CLEAN DATAFRAME
             # =====================================================
 
-            df = clean_dataframe(df)
+            df.dropna(
+                how="all",
+                inplace=True
+            )
+
+            df.dropna(
+                axis=1,
+                how="all",
+                inplace=True
+            )
+
+            df = remove_total_rows(df)
 
             # =====================================================
-            # CLEAN COLUMN NAMES
+            # CLEAN COLUMNS
             # =====================================================
 
             df.columns = [
 
                 str(col)
+
                 .replace("\n", " ")
+
                 .replace("_", " ")
+
                 .strip()
+
                 .lower()
 
                 for col in df.columns
@@ -453,20 +494,20 @@ if uploaded_files:
             ]
 
             # =====================================================
-            # CREATE OUTPUT DATAFRAME
+            # CREATE OUTPUT DF
             # =====================================================
 
             standardized_df = pd.DataFrame()
 
             for col in MASTER_COLUMNS:
 
-                standardized_df[col] = "NA"
+                standardized_df[col] = ""
 
             # =====================================================
-            # AUTO MAPPING
+            # AUTO MAP
             # =====================================================
 
-            detected_mapping = {}
+            mapping = {}
 
             for standard_col, alias_list in ALIASES.items():
 
@@ -484,64 +525,28 @@ if uploaded_files:
                         standard_col
                     ] = df[detected_col]
 
-                    detected_mapping[
+                    mapping[
                         standard_col
                     ] = detected_col
 
             # =====================================================
-            # CLEAN SA
+            # CLEAN IMPORTANT FIELDS
             # =====================================================
 
-            standardized_df["Sum Assured"] = (
-
-                standardized_df["Sum Assured"]
-
-                .astype(str)
-
-                .str.replace(",", "")
-
-                .str.replace("₹", "")
-
-                .str.strip()
-
-            )
-
-            standardized_df["Sum Assured"] = pd.to_numeric(
-
-                standardized_df["Sum Assured"],
-
-                errors="coerce"
-
-            )
-
-            # =====================================================
-            # CLEAN LOAN AMOUNT
-            # =====================================================
-
-            standardized_df["Loan Outstanding Amount"] = (
+            standardized_df["Loan Outstanding Amount"] = clean_money(
 
                 standardized_df["Loan Outstanding Amount"]
 
-                .astype(str)
-
-                .str.replace(",", "")
-
-                .str.replace("₹", "")
-
-                .str.strip()
-
             )
 
-            standardized_df["Loan Outstanding Amount"] = pd.to_numeric(
+            standardized_df["Sum Assured"] = clean_money(
 
-                standardized_df["Loan Outstanding Amount"],
-
-                errors="coerce"
+                standardized_df["Sum Assured"]
 
             )
 
             # =====================================================
-            # SMART SA LOGIC
+            # SMART SA
             # =====================================================
 
             standardized_df["Final SA"] = np.where(
@@ -578,38 +583,39 @@ if uploaded_files:
 
             standardized_df = standardized_df[
 
-                standardized_df["Final SA"] > 0
+                standardized_df[
+                    "Name of Primary Loan borrower"
+                ].astype(str).str.strip() != ""
 
             ]
 
             standardized_df = standardized_df[
 
-                standardized_df[
-                    "Name of Primary Loan borrower"
-                ].astype(str).str.strip().ne("")
+                standardized_df["Final SA"] > 0
+
             ]
 
             # =====================================================
             # CLEAN DATES
             # =====================================================
 
-            standardized_df["Date of Birth (DDMMMYYYY)"] = clean_date_column(
+            date_cols = [
 
-                standardized_df["Date of Birth (DDMMMYYYY)"]
+                "Date of Birth (DDMMMYYYY)",
 
-            )
+                "Loan Disbursement Date (DDMMYYYY)",
 
-            standardized_df["Loan Disbursement Date (DDMMYYYY)"] = clean_date_column(
+                "Loan End date (DDMMYYYY)"
 
-                standardized_df["Loan Disbursement Date (DDMMYYYY)"]
+            ]
 
-            )
+            for col in date_cols:
 
-            standardized_df["Loan End date (DDMMYYYY)"] = clean_date_column(
+                standardized_df[col] = clean_date(
 
-                standardized_df["Loan End date (DDMMYYYY)"]
+                    standardized_df[col]
 
-            )
+                )
 
             # =====================================================
             # CLEAN MOBILE
@@ -647,7 +653,7 @@ if uploaded_files:
                     "Loan Disbursement Date (DDMMYYYY)"
                 ],
 
-                errors='coerce'
+                errors="coerce"
 
             )
 
@@ -657,7 +663,7 @@ if uploaded_files:
                     "Loan End date (DDMMYYYY)"
                 ],
 
-                errors='coerce'
+                errors="coerce"
 
             )
 
@@ -698,14 +704,10 @@ if uploaded_files:
             )
 
             # =====================================================
-            # RATE
+            # PREMIUM
             # =====================================================
 
             standardized_df["Rate"] = RATE_PER_LAKH
-
-            # =====================================================
-            # PREMIUM
-            # =====================================================
 
             standardized_df["Premium (Excl. GST)"] = (
 
@@ -715,10 +717,6 @@ if uploaded_files:
 
             ) * RATE_PER_LAKH
 
-            # =====================================================
-            # GST
-            # =====================================================
-
             standardized_df["GST amount"] = (
 
                 standardized_df["Premium (Excl. GST)"]
@@ -727,15 +725,13 @@ if uploaded_files:
 
             )
 
-            # =====================================================
-            # TOTAL PREMIUM
-            # =====================================================
-
             standardized_df["Total Premium (incl GST)"] = (
 
                 standardized_df["Premium (Excl. GST)"]
 
-                + standardized_df["GST amount"]
+                +
+
+                standardized_df["GST amount"]
 
             )
 
@@ -778,13 +774,13 @@ if uploaded_files:
             )
 
             # =====================================================
-            # FINAL COLUMN ORDER
+            # KEEP FINAL FORMAT
             # =====================================================
 
             standardized_df = standardized_df[MASTER_COLUMNS]
 
             # =====================================================
-            # APPEND DATA
+            # APPEND
             # =====================================================
 
             final_master_df = pd.concat(
@@ -811,7 +807,7 @@ if uploaded_files:
 
     st.subheader("📊 Portfolio Summary")
 
-    col1, col2, col3, col4, col5 = st.columns(5)
+    col1, col2, col3, col4 = st.columns(4)
 
     with col1:
 
@@ -830,18 +826,11 @@ if uploaded_files:
     with col3:
 
         st.metric(
-            "Premium Excl GST",
-            f"₹ {final_master_df['Premium (Excl. GST)'].sum():,.2f}"
-        )
-
-    with col4:
-
-        st.metric(
             "Total GST",
             f"₹ {final_master_df['GST amount'].sum():,.2f}"
         )
 
-    with col5:
+    with col4:
 
         st.metric(
             "Total Premium",
@@ -852,14 +841,11 @@ if uploaded_files:
     # OUTPUT
     # =====================================================
 
-    st.subheader("📋 Final Standardized Output")
+    st.subheader("📋 Final Output")
 
     st.dataframe(
-
         final_master_df,
-
         use_container_width=True
-
     )
 
     # =====================================================
@@ -884,7 +870,7 @@ if uploaded_files:
 
         output,
 
-        engine='openpyxl'
+        engine="openpyxl"
 
     ) as writer:
 
@@ -894,17 +880,15 @@ if uploaded_files:
 
             index=False,
 
-            sheet_name='Final Output'
+            sheet_name="Final Output"
 
         )
-
-    processed_data = output.getvalue()
 
     st.download_button(
 
         label="⬇ Download Final Excel",
 
-        data=processed_data,
+        data=output.getvalue(),
 
         file_name="Final_Aviva_Output.xlsx",
 
@@ -912,12 +896,8 @@ if uploaded_files:
 
     )
 
-# =====================================================
-# FOOTER
-# =====================================================
-
 st.markdown("---")
 
 st.caption(
-    "Built for Insurance Underwriting & Data Standardization"
+    "Built for Insurance Underwriting Automation"
 )
