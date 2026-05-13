@@ -92,19 +92,34 @@ MASTER_COLUMNS = [
 ALIASES = {
 
     "Loan Account No.": [
+
         "loan account no",
         "loan account",
+        "loan ac",
+        "loan a/c",
         "a/c number",
         "account number",
-        "account no"
+        "account no",
+        "membership no",
+        "membership number",
+        "member id"
+
     ],
 
     "Name of Primary Loan borrower": [
-        "member name"
+
+        "member name",
+        "customer name",
+        "borrower name",
+        "insured name",
+        "client name",
+        "name"
+
     ],
 
     "Gender": [
-        "gender"
+        "gender",
+        "sex"
     ],
 
     "Date of Birth (DDMMMYYYY)": [
@@ -124,7 +139,8 @@ ALIASES = {
     "Mobile No": [
         "mobile number",
         "mobile no",
-        "mobile"
+        "mobile",
+        "phone"
     ],
 
     "Nominee Name": [
@@ -133,7 +149,8 @@ ALIASES = {
 
     "Relationship of the Nominee with Insurance covered Person": [
         "nominee relationship",
-        "relationship"
+        "relationship",
+        "relation"
     ],
 
     "Nominee Age": [
@@ -148,16 +165,19 @@ ALIASES = {
     "Sum Assured": [
         "sum assured",
         "sum insured",
-        "sa"
+        "sa",
+        "coverage"
     ],
 
     "Loan Disbursement Date (DDMMYYYY)": [
         "loan start date",
-        "disbursement date"
+        "disbursement date",
+        "loan start"
     ],
 
     "Loan End date (DDMMYYYY)": [
-        "loan end date"
+        "loan end date",
+        "loan end"
     ],
 
     "Address            (First Life)": [
@@ -173,7 +193,7 @@ ALIASES = {
 }
 
 # =====================================================
-# MATCHING
+# SMART COLUMN DETECTION
 # =====================================================
 
 def detect_column(columns, aliases):
@@ -183,22 +203,49 @@ def detect_column(columns, aliases):
 
     for col in columns:
 
-        clean_col = str(col).lower().strip()
+        clean_col = (
+
+            str(col)
+
+            .lower()
+
+            .replace("_", " ")
+
+            .replace("-", " ")
+
+            .strip()
+
+        )
 
         for alias in aliases:
 
-            score = SequenceMatcher(
-                None,
-                clean_col,
-                alias
-            ).ratio() * 100
+            alias_clean = alias.lower().strip()
+
+            # DIRECT MATCH BOOST
+
+            if alias_clean in clean_col:
+
+                score = 100
+
+            else:
+
+                score = SequenceMatcher(
+
+                    None,
+
+                    clean_col,
+
+                    alias_clean
+
+                ).ratio() * 100
 
             if score > best_score:
 
                 best_score = score
                 best_match = col
 
-    if best_score >= 75:
+    if best_score >= 55:
+
         return best_match
 
     return None
@@ -356,7 +403,7 @@ if uploaded_files:
 
     )
 
-    for file_index, file in enumerate(uploaded_files):
+    for file in uploaded_files:
 
         st.markdown("---")
 
@@ -407,7 +454,7 @@ if uploaded_files:
                     break
 
             # =====================================================
-            # READ CLEAN FILE
+            # READ FILE AGAIN
             # =====================================================
 
             df = pd.read_excel(
@@ -574,7 +621,7 @@ if uploaded_files:
             )
 
             # =====================================================
-            # LOAN TERM
+            # LOAN TERM CALCULATION
             # =====================================================
 
             start_date = pd.to_datetime(
@@ -675,7 +722,7 @@ if uploaded_files:
             )
 
             # =====================================================
-            # REMOVE NOMINEE SAME AS MEMBER
+            # REMOVE SAME NOMINEE NAME
             # =====================================================
 
             standardized_df["Nominee Name"] = np.where(
@@ -701,10 +748,15 @@ if uploaded_files:
             )
 
             # =====================================================
-            # TYPE OF AGE PROOF
+            # AGE PROOF DETECTION
             # =====================================================
 
+            proof_found = False
+
             for col in df.columns:
+
+                if proof_found:
+                    break
 
                 cleaned = (
 
@@ -720,30 +772,16 @@ if uploaded_files:
 
                 if valid_mask.any():
 
-                    standardized_df["Type of    Age Proof"] = cleaned
-                    break
+                    # avoid mobile number duplication
 
-            # =====================================================
-            # REMOVE MOBILE FROM AGE PROOF
-            # =====================================================
+                    if col != detect_column(
+                        df.columns,
+                        ALIASES["Mobile No"]
+                    ):
 
-            standardized_df["Type of    Age Proof"] = np.where(
+                        standardized_df["Type of    Age Proof"] = cleaned
 
-                standardized_df["Type of    Age Proof"]
-
-                .astype(str)
-
-                ==
-
-                standardized_df["Mobile No"]
-
-                .astype(str),
-
-                np.nan,
-
-                standardized_df["Type of    Age Proof"]
-
-            )
+                        proof_found = True
 
             # =====================================================
             # PREMIUM CALCULATIONS
@@ -813,10 +851,6 @@ if uploaded_files:
 
             standardized_df = standardized_df[MASTER_COLUMNS]
 
-            # =====================================================
-            # APPEND
-            # =====================================================
-
             final_master_df = pd.concat(
 
                 [final_master_df, standardized_df],
@@ -846,7 +880,7 @@ if uploaded_files:
     final_master_df = final_master_df.fillna("")
 
     # =====================================================
-    # DISPLAY SAFE DF
+    # SAFE DISPLAY
     # =====================================================
 
     display_df = final_master_df.astype(str)
