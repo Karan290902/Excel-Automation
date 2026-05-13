@@ -274,7 +274,7 @@ def detect_column(columns, aliases):
 
 def clean_money(series):
 
-    return pd.to_numeric(
+    cleaned = (
 
         series.astype(str)
 
@@ -284,15 +284,23 @@ def clean_money(series):
 
         .str.replace("/-", "", regex=False)
 
-        .str.replace(" ", "", regex=False),
+        .str.replace(" ", "", regex=False)
 
+    )
+
+    cleaned = cleaned.replace(
+        ["", "nan", "None"],
+        np.nan
+    )
+
+    return pd.to_numeric(
+        cleaned,
         errors="coerce"
-
     )
 
 def clean_mobile(series):
 
-    return (
+    cleaned = (
 
         series.astype(str)
 
@@ -302,12 +310,28 @@ def clean_mobile(series):
 
     )
 
+    cleaned = cleaned.replace(
+        ["", "nan"],
+        np.nan
+    )
+
+    return cleaned
+
 def clean_age(series):
 
-    return pd.to_numeric(
+    cleaned = pd.to_numeric(
+
         series,
+
         errors="coerce"
-    ).fillna(0).astype(int)
+
+    )
+
+    cleaned = cleaned.where(
+        cleaned.between(0, 99)
+    )
+
+    return cleaned
 
 def clean_date(series):
 
@@ -490,7 +514,7 @@ if uploaded_files:
 
             for col in MASTER_COLUMNS:
 
-                standardized_df[col] = ""
+                standardized_df[col] = np.nan
 
             # =====================================================
             # AUTO MAP
@@ -534,7 +558,7 @@ if uploaded_files:
 
                     ),
 
-                    "",
+                    np.nan,
 
                     standardized_df["Branch Name"]
 
@@ -574,12 +598,9 @@ if uploaded_files:
 
             )
 
-            standardized_df["Final SA"] = (
-
-                standardized_df["Final SA"]
-
-                .fillna(0)
-
+            standardized_df["Final SA"] = pd.to_numeric(
+                standardized_df["Final SA"],
+                errors="coerce"
             )
 
             standardized_df["Sum Assured"] = (
@@ -589,7 +610,7 @@ if uploaded_files:
             )
 
             # =====================================================
-            # REMOVE INVALID ROWS
+            # REMOVE EMPTY NAME ROWS
             # =====================================================
 
             standardized_df = standardized_df[
@@ -597,12 +618,6 @@ if uploaded_files:
                 standardized_df[
                     "Name of Primary Loan borrower"
                 ].astype(str).str.strip() != ""
-
-            ]
-
-            standardized_df = standardized_df[
-
-                standardized_df["Final SA"] > 0
 
             ]
 
@@ -617,7 +632,7 @@ if uploaded_files:
             )
 
             # =====================================================
-            # CLEAN LOAN START DATE ONLY IF EXISTS
+            # LOAN START DATE ONLY IF EXISTS
             # =====================================================
 
             if (
@@ -626,11 +641,7 @@ if uploaded_files:
                     "Loan Disbursement Date (DDMMYYYY)"
                 ]
 
-                .astype(str)
-
-                .str.strip()
-
-                .ne("")
+                .notna()
 
                 .any()
 
@@ -642,12 +653,8 @@ if uploaded_files:
 
                 )
 
-            else:
-
-                standardized_df["Loan Disbursement Date (DDMMYYYY)"] = ""
-
             # =====================================================
-            # CLEAN LOAN END DATE ONLY IF EXISTS
+            # LOAN END DATE ONLY IF EXISTS
             # =====================================================
 
             if (
@@ -656,11 +663,7 @@ if uploaded_files:
                     "Loan End date (DDMMYYYY)"
                 ]
 
-                .astype(str)
-
-                .str.strip()
-
-                .ne("")
+                .notna()
 
                 .any()
 
@@ -671,10 +674,6 @@ if uploaded_files:
                     standardized_df["Loan End date (DDMMYYYY)"]
 
                 )
-
-            else:
-
-                standardized_df["Loan End date (DDMMYYYY)"] = ""
 
             # =====================================================
             # CLEAN MOBILE
@@ -703,7 +702,7 @@ if uploaded_files:
             )
 
             # =====================================================
-            # CALCULATE LOAN TERM ONLY IF BOTH DATES EXIST
+            # CALCULATE LOAN TERM
             # =====================================================
 
             start_date = pd.to_datetime(
@@ -768,9 +767,7 @@ if uploaded_files:
 
                 standardized_df[
                     "Loan Term (in months)"
-                ]
-
-                .fillna("")
+                ].where(valid_dates, np.nan)
 
             )
 
@@ -778,9 +775,7 @@ if uploaded_files:
 
                 standardized_df[
                     "Loan Term (Year)"
-                ]
-
-                .fillna("")
+                ].where(valid_dates, np.nan)
 
             )
 
@@ -797,34 +792,58 @@ if uploaded_files:
             )
 
             # =====================================================
-            # PREMIUM
+            # PREMIUM ONLY IF SA EXISTS
             # =====================================================
 
-            standardized_df["Rate"] = RATE_PER_LAKH
+            standardized_df["Rate"] = np.where(
 
-            standardized_df["Premium (Excl. GST)"] = (
+                standardized_df["Final SA"].notna(),
 
-                standardized_df["Final SA"]
+                RATE_PER_LAKH,
 
-                / 100000
-
-            ) * RATE_PER_LAKH
-
-            standardized_df["GST amount"] = (
-
-                standardized_df["Premium (Excl. GST)"]
-
-                * GST_RATE
+                np.nan
 
             )
 
-            standardized_df["Total Premium (incl GST)"] = (
+            standardized_df["Premium (Excl. GST)"] = np.where(
+
+                standardized_df["Final SA"].notna(),
+
+                (
+
+                    standardized_df["Final SA"]
+
+                    / 100000
+
+                ) * RATE_PER_LAKH,
+
+                np.nan
+
+            )
+
+            standardized_df["GST amount"] = np.where(
+
+                standardized_df["Premium (Excl. GST)"].notna(),
+
+                standardized_df["Premium (Excl. GST)"]
+
+                * GST_RATE,
+
+                np.nan
+
+            )
+
+            standardized_df["Total Premium (incl GST)"] = np.where(
+
+                standardized_df["Premium (Excl. GST)"].notna(),
 
                 standardized_df["Premium (Excl. GST)"]
 
                 +
 
-                standardized_df["GST amount"]
+                standardized_df["GST amount"],
+
+                np.nan
 
             )
 
@@ -853,16 +872,6 @@ if uploaded_files:
             standardized_df["Total Premium"] = (
 
                 standardized_df["Total Premium (incl GST)"]
-
-            )
-
-            # =====================================================
-            # REMARKS
-            # =====================================================
-
-            standardized_df["Aviva Remarks"] = (
-
-                "Processed Successfully"
 
             )
 
@@ -913,21 +922,21 @@ if uploaded_files:
 
         st.metric(
             "Total SA",
-            f"₹ {final_master_df['Sum Assured'].sum():,.0f}"
+            f"₹ {final_master_df['Sum Assured'].sum(skipna=True):,.0f}"
         )
 
     with col3:
 
         st.metric(
             "Total GST",
-            f"₹ {final_master_df['GST amount'].sum():,.2f}"
+            f"₹ {final_master_df['GST amount'].sum(skipna=True):,.2f}"
         )
 
     with col4:
 
         st.metric(
             "Total Premium",
-            f"₹ {final_master_df['Total Premium (incl GST)'].sum():,.2f}"
+            f"₹ {final_master_df['Total Premium (incl GST)'].sum(skipna=True):,.2f}"
         )
 
     # =====================================================
@@ -960,33 +969,21 @@ if uploaded_files:
     output = BytesIO()
 
     with pd.ExcelWriter(
-
         output,
-
         engine="openpyxl"
-
     ) as writer:
 
         final_master_df.to_excel(
-
             writer,
-
             index=False,
-
             sheet_name="Final Output"
-
         )
 
     st.download_button(
-
         label="⬇ Download Final Excel",
-
         data=output.getvalue(),
-
         file_name="Final_Aviva_Output.xlsx",
-
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-
     )
 
 st.markdown("---")
