@@ -1,10 +1,8 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import json
-import os
 from io import BytesIO
-from rapidfuzz import fuzz
+from difflib import SequenceMatcher
 
 # =====================================================
 # PAGE CONFIG
@@ -19,7 +17,7 @@ st.set_page_config(
 st.title("📊 AI Insurance Data Standardization Engine")
 
 st.write(
-    "Upload any insurance excel file and auto-convert into insurer-ready format."
+    "Upload insurance excel files and generate insurer-ready output automatically."
 )
 
 # =====================================================
@@ -28,38 +26,9 @@ st.write(
 
 RATE_PER_LAKH = 320.3
 GST_RATE = 0.18
-MAPPING_FILE = "mapping_memory.json"
 
 # =====================================================
-# LOAD MAPPING MEMORY
-# =====================================================
-
-if os.path.exists(MAPPING_FILE):
-
-    with open(MAPPING_FILE, "r") as f:
-
-        SAVED_MAPPINGS = json.load(f)
-
-else:
-
-    SAVED_MAPPINGS = {}
-
-# =====================================================
-# SAVE MAPPING MEMORY
-# =====================================================
-
-def save_mapping_memory():
-
-    with open(MAPPING_FILE, "w") as f:
-
-        json.dump(
-            SAVED_MAPPINGS,
-            f,
-            indent=4
-        )
-
-# =====================================================
-# OUTPUT FORMAT
+# FINAL OUTPUT FORMAT
 # =====================================================
 
 MASTER_COLUMNS = [
@@ -117,7 +86,7 @@ MASTER_COLUMNS = [
 ]
 
 # =====================================================
-# ALIASES
+# AUTO MAPPING ALIASES
 # =====================================================
 
 ALIASES = {
@@ -216,18 +185,17 @@ def detect_column(columns, aliases):
 
         clean_col = str(col).lower().strip()
 
-        # CHECK SAVED MEMORY
-
-        if clean_col in SAVED_MAPPINGS:
-
-            return SAVED_MAPPINGS[clean_col]
-
         for alias in aliases:
 
-            score = fuzz.token_sort_ratio(
+            score = SequenceMatcher(
+
+                None,
+
                 clean_col,
+
                 alias
-            )
+
+            ).ratio() * 100
 
             if score > best_score:
 
@@ -478,7 +446,7 @@ if uploaded_files:
                 aliases
             )
 
-            # LOW CONFIDENCE USER CONFIRMATION
+            # USER SELECTION IF NOT DETECTED
 
             if detected_col is None:
 
@@ -496,19 +464,19 @@ if uploaded_files:
 
                     detected_col = selected
 
-            if detected_col is not None:
+            # SAFE MAPPING
+
+            if (
+
+                detected_col is not None
+
+                and
+
+                detected_col in df.columns
+
+            ):
 
                 standardized_df[output_col] = df[detected_col]
-
-                # SAVE MEMORY
-
-                SAVED_MAPPINGS[
-                    str(detected_col).lower()
-                ] = output_col
-
-        # SAVE MEMORY FILE
-
-        save_mapping_memory()
 
         # =====================================================
         # CLEAN MONEY
