@@ -17,7 +17,7 @@ st.set_page_config(
 st.title("📊 Insurance Data Standardization Engine")
 
 st.write(
-    "Upload any insurance excel and convert it into fixed insurer output format."
+    "Upload insurance excel files and generate fixed insurer-ready output."
 )
 
 # =====================================================
@@ -152,7 +152,8 @@ ALIASES = {
     "Branch Name": [
 
         "branch name",
-        "branch"
+        "branch office",
+        "branch code"
 
     ],
 
@@ -301,18 +302,6 @@ def clean_mobile(series):
 
     )
 
-def clean_aadhar(series):
-
-    return (
-
-        series.astype(str)
-
-        .str.replace(r"\D", "", regex=True)
-
-        .str[-12:]
-
-    )
-
 def clean_age(series):
 
     return pd.to_numeric(
@@ -322,12 +311,12 @@ def clean_age(series):
 
 def clean_date(series):
 
-    dates = pd.to_datetime(
+    cleaned = pd.to_datetime(
         series,
-        errors="coerce"
+        errors='coerce'
     )
 
-    return dates.dt.strftime("%d%b%Y")
+    return cleaned.dt.strftime('%d%b%Y')
 
 # =====================================================
 # REMOVE TOTAL ROWS
@@ -399,7 +388,7 @@ if uploaded_files:
         try:
 
             # =====================================================
-            # READ FILE
+            # READ RAW FILE
             # =====================================================
 
             raw_df = pd.read_excel(
@@ -445,7 +434,7 @@ if uploaded_files:
                     break
 
             # =====================================================
-            # READ AGAIN USING HEADER
+            # READ AGAIN
             # =====================================================
 
             df = pd.read_excel(
@@ -474,7 +463,7 @@ if uploaded_files:
             df = remove_total_rows(df)
 
             # =====================================================
-            # CLEAN COLUMNS
+            # CLEAN COLUMN NAMES
             # =====================================================
 
             df.columns = [
@@ -507,8 +496,6 @@ if uploaded_files:
             # AUTO MAP
             # =====================================================
 
-            mapping = {}
-
             for standard_col, alias_list in ALIASES.items():
 
                 detected_col = detect_column(
@@ -525,12 +512,36 @@ if uploaded_files:
                         standard_col
                     ] = df[detected_col]
 
-                    mapping[
-                        standard_col
-                    ] = detected_col
+            # =====================================================
+            # STRICT BRANCH VALIDATION
+            # =====================================================
+
+            if "Branch Name" in standardized_df.columns:
+
+                standardized_df["Branch Name"] = np.where(
+
+                    standardized_df["Branch Name"]
+
+                    .astype(str)
+
+                    .str.lower()
+
+                    .str.contains(
+
+                        "name|member|borrower|nominee",
+
+                        na=False
+
+                    ),
+
+                    "",
+
+                    standardized_df["Branch Name"]
+
+                )
 
             # =====================================================
-            # CLEAN IMPORTANT FIELDS
+            # CLEAN MONEY
             # =====================================================
 
             standardized_df["Loan Outstanding Amount"] = clean_money(
@@ -596,26 +607,74 @@ if uploaded_files:
             ]
 
             # =====================================================
-            # CLEAN DATES
+            # CLEAN DOB
             # =====================================================
 
-            date_cols = [
+            standardized_df["Date of Birth (DDMMMYYYY)"] = clean_date(
 
-                "Date of Birth (DDMMMYYYY)",
+                standardized_df["Date of Birth (DDMMMYYYY)"]
 
-                "Loan Disbursement Date (DDMMYYYY)",
+            )
 
-                "Loan End date (DDMMYYYY)"
+            # =====================================================
+            # CLEAN LOAN START DATE ONLY IF EXISTS
+            # =====================================================
 
-            ]
+            if (
 
-            for col in date_cols:
+                standardized_df[
+                    "Loan Disbursement Date (DDMMYYYY)"
+                ]
 
-                standardized_df[col] = clean_date(
+                .astype(str)
 
-                    standardized_df[col]
+                .str.strip()
+
+                .ne("")
+
+                .any()
+
+            ):
+
+                standardized_df["Loan Disbursement Date (DDMMYYYY)"] = clean_date(
+
+                    standardized_df["Loan Disbursement Date (DDMMYYYY)"]
 
                 )
+
+            else:
+
+                standardized_df["Loan Disbursement Date (DDMMYYYY)"] = ""
+
+            # =====================================================
+            # CLEAN LOAN END DATE ONLY IF EXISTS
+            # =====================================================
+
+            if (
+
+                standardized_df[
+                    "Loan End date (DDMMYYYY)"
+                ]
+
+                .astype(str)
+
+                .str.strip()
+
+                .ne("")
+
+                .any()
+
+            ):
+
+                standardized_df["Loan End date (DDMMYYYY)"] = clean_date(
+
+                    standardized_df["Loan End date (DDMMYYYY)"]
+
+                )
+
+            else:
+
+                standardized_df["Loan End date (DDMMYYYY)"] = ""
 
             # =====================================================
             # CLEAN MOBILE
@@ -644,7 +703,7 @@ if uploaded_files:
             )
 
             # =====================================================
-            # CALCULATE LOAN TERM
+            # CALCULATE LOAN TERM ONLY IF BOTH DATES EXIST
             # =====================================================
 
             start_date = pd.to_datetime(
@@ -653,7 +712,7 @@ if uploaded_files:
                     "Loan Disbursement Date (DDMMYYYY)"
                 ],
 
-                errors="coerce"
+                errors='coerce'
 
             )
 
@@ -663,25 +722,39 @@ if uploaded_files:
                     "Loan End date (DDMMYYYY)"
                 ],
 
-                errors="coerce"
+                errors='coerce'
 
             )
 
-            months = (
+            valid_dates = (
 
-                (end_date.dt.year - start_date.dt.year) * 12
+                start_date.notna()
 
-                +
+                &
 
-                (end_date.dt.month - start_date.dt.month)
+                end_date.notna()
+
+            )
+
+            months = np.where(
+
+                valid_dates,
+
+                (
+
+                    (end_date.dt.year - start_date.dt.year) * 12
+
+                    +
+
+                    (end_date.dt.month - start_date.dt.month)
+
+                ),
+
+                np.nan
 
             )
 
-            standardized_df["Loan Term (in months)"] = (
-
-                months.fillna(0).astype(int)
-
-            )
+            standardized_df["Loan Term (in months)"] = months
 
             standardized_df["Loan Term (Year)"] = (
 
@@ -690,6 +763,26 @@ if uploaded_files:
                 ] / 12
 
             ).round(1)
+
+            standardized_df["Loan Term (in months)"] = (
+
+                standardized_df[
+                    "Loan Term (in months)"
+                ]
+
+                .fillna("")
+
+            )
+
+            standardized_df["Loan Term (Year)"] = (
+
+                standardized_df[
+                    "Loan Term (Year)"
+                ]
+
+                .fillna("")
+
+            )
 
             # =====================================================
             # SERIAL NUMBER
@@ -774,7 +867,7 @@ if uploaded_files:
             )
 
             # =====================================================
-            # KEEP FINAL FORMAT
+            # FINAL FORMAT
             # =====================================================
 
             standardized_df = standardized_df[MASTER_COLUMNS]
