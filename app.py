@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from io import BytesIO
+from difflib import SequenceMatcher
 
 # =====================================================
 # PAGE CONFIG
@@ -31,7 +32,7 @@ RATE_PER_LAKH = 320.3
 GST_RATE = 0.18
 
 # =====================================================
-# FIXED OUTPUT FORMAT
+# MASTER OUTPUT FORMAT
 # =====================================================
 
 MASTER_COLUMNS = [
@@ -95,64 +96,90 @@ MASTER_COLUMNS = [
 ALIASES = {
 
     "Loan Account No.": [
+
         "loan account",
+        "loan account no",
+        "loan account number",
         "account no",
+        "account number",
         "a/c number",
         "membership no",
+        "membership number",
+        "membership account no",
+        "member account no",
         "loan no",
-        "lan"
+        "lan",
+        "customer id"
+
     ],
 
     "Name of Primary Loan borrower": [
+
         "member name",
         "customer name",
         "borrower name",
         "insured name",
         "primary borrower",
         "name"
+
     ],
 
     "Gender": [
+
         "gender",
         "sex"
+
     ],
 
     "Date of Birth (DDMMMYYYY)": [
+
         "dob",
         "date of birth",
         "birth date"
+
     ],
 
     "Mobile No": [
+
         "mobile",
         "mobile number",
         "phone",
         "contact"
+
     ],
 
     "Address            (First Life)": [
+
         "address",
         "residence"
+
     ],
 
     "Pincode": [
+
         "pincode",
         "pin code",
         "zip"
+
     ],
 
     "Branch Name": [
+
         "branch",
         "branch name"
+
     ],
 
     "Loan Outstanding Amount": [
+
         "loan amount",
         "outstanding amount",
         "loan outstanding"
+
     ],
 
     "Sum Assured": [
+
         "sum assured",
         "sum insured",
         "insured amount",
@@ -162,54 +189,112 @@ ALIASES = {
         "aviva calculation sa",
         "sa",
         "gtl"
+
     ],
 
     "Nominee Name": [
+
         "nominee"
+
+    ],
+
+    "Relationship of the Nominee with Insurance covered Person": [
+
+        "nominee relationship",
+        "relationship",
+        "relation",
+        "nominee relation"
+
     ],
 
     "Nominee Age": [
+
         "nominee age"
+
     ],
 
     "Loan Disbursement Date (DDMMYYYY)": [
+
         "loan start",
         "disbursement",
         "start date"
+
     ],
 
     "Loan End date (DDMMYYYY)": [
+
         "loan end",
         "loan maturity",
         "end date"
+
     ],
 
     "MAIN MEMBER AGE": [
+
         "age",
-        "member age"
+        "member age",
+        "insured age",
+        "borrower age",
+        "customer age"
+
     ]
 
 }
 
 # =====================================================
-# SMART COLUMN DETECTION
+# AI SMART COLUMN DETECTION
 # =====================================================
+
+def similarity(a, b):
+
+    return SequenceMatcher(
+        None,
+        a,
+        b
+    ).ratio()
 
 def detect_column(columns, aliases):
 
-    for alias in aliases:
+    best_match = None
 
-        for col in columns:
+    best_score = 0
 
-            cleaned_col = str(col).lower().strip()
+    for col in columns:
 
-            if cleaned_col == alias:
+        cleaned_col = (
 
-                return col
+            str(col)
 
-            elif alias in cleaned_col:
+            .lower()
 
-                return col
+            .replace("_", " ")
+
+            .replace("-", " ")
+
+            .strip()
+
+        )
+
+        for alias in aliases:
+
+            score = similarity(
+                cleaned_col,
+                alias
+            )
+
+            if alias in cleaned_col:
+
+                score += 0.3
+
+            if score > best_score:
+
+                best_score = score
+
+                best_match = col
+
+    if best_score >= 0.45:
+
+        return best_match
 
     return None
 
@@ -263,18 +348,12 @@ def clean_dataframe(df):
 
 def clean_date_column(series):
 
-    try:
+    cleaned = pd.to_datetime(
+        series,
+        errors='coerce'
+    )
 
-        cleaned = pd.to_datetime(
-            series,
-            errors='coerce'
-        )
-
-        return cleaned.dt.strftime('%d%b%Y')
-
-    except:
-
-        return series
+    return cleaned.dt.strftime('%d%b%Y')
 
 # =====================================================
 # MOBILE CLEANING
@@ -282,7 +361,7 @@ def clean_date_column(series):
 
 def clean_mobile(series):
 
-    cleaned = (
+    return (
 
         series.astype(str)
 
@@ -291,26 +370,6 @@ def clean_mobile(series):
         .str[-10:]
 
     )
-
-    return cleaned
-
-# =====================================================
-# AADHAR CLEANING
-# =====================================================
-
-def clean_aadhar(series):
-
-    cleaned = (
-
-        series.astype(str)
-
-        .str.replace(r'\D', '', regex=True)
-
-        .str[-12:]
-
-    )
-
-    return cleaned
 
 # =====================================================
 # AGE CLEANING
@@ -326,12 +385,10 @@ def clean_age(series):
 
     ).fillna(0).astype(int)
 
-    cleaned = cleaned.clip(
+    return cleaned.clip(
         lower=0,
         upper=99
     )
-
-    return cleaned
 
 # =====================================================
 # FILE UPLOAD
@@ -380,7 +437,7 @@ if uploaded_files:
             df = clean_dataframe(df)
 
             # =====================================================
-            # CLEAN COLUMNS
+            # CLEAN COLUMN NAMES
             # =====================================================
 
             df.columns = [
@@ -409,6 +466,8 @@ if uploaded_files:
             # AUTO MAPPING
             # =====================================================
 
+            detected_mapping = {}
+
             for standard_col, alias_list in ALIASES.items():
 
                 detected_col = detect_column(
@@ -424,6 +483,10 @@ if uploaded_files:
                     standardized_df[
                         standard_col
                     ] = df[detected_col]
+
+                    detected_mapping[
+                        standard_col
+                    ] = detected_col
 
             # =====================================================
             # CLEAN SA
@@ -565,6 +628,12 @@ if uploaded_files:
             standardized_df["MAIN MEMBER AGE"] = clean_age(
 
                 standardized_df["MAIN MEMBER AGE"]
+
+            )
+
+            standardized_df["Nominee Age"] = clean_age(
+
+                standardized_df["Nominee Age"]
 
             )
 
