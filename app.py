@@ -17,7 +17,7 @@ st.set_page_config(
 st.title("📊 Insurance Data Standardization Engine")
 
 st.write(
-    "Upload insurance excel files and generate fixed insurer-ready output."
+    "Upload insurance excel files and generate insurer-ready output."
 )
 
 # =====================================================
@@ -86,7 +86,7 @@ MASTER_COLUMNS = [
 ]
 
 # =====================================================
-# COLUMN ALIASES
+# AUTO MAPPING ALIASES
 # =====================================================
 
 ALIASES = {
@@ -146,14 +146,6 @@ ALIASES = {
 
         "pin code",
         "pincode"
-
-    ],
-
-    "Branch Name": [
-
-        "branch name",
-        "branch office",
-        "branch code"
 
     ],
 
@@ -507,6 +499,44 @@ if uploaded_files:
             ]
 
             # =====================================================
+            # USER FIELD SELECTION
+            # =====================================================
+
+            st.subheader(f"🛠 Field Mapping - {file.name}")
+
+            all_columns = [""] + list(df.columns)
+
+            selected_branch = st.selectbox(
+
+                f"Select Branch Column - {file.name}",
+
+                all_columns,
+
+                index=0
+
+            )
+
+            selected_zone = st.selectbox(
+
+                f"Select Zone Column - {file.name}",
+
+                all_columns,
+
+                index=0
+
+            )
+
+            selected_loan_type = st.selectbox(
+
+                f"Select Loan Type Column - {file.name}",
+
+                all_columns,
+
+                index=0
+
+            )
+
+            # =====================================================
             # CREATE OUTPUT DF
             # =====================================================
 
@@ -537,32 +567,20 @@ if uploaded_files:
                     ] = df[detected_col]
 
             # =====================================================
-            # STRICT BRANCH VALIDATION
+            # MANUAL SAFE MAPPING
             # =====================================================
 
-            if "Branch Name" in standardized_df.columns:
+            if selected_branch != "":
 
-                standardized_df["Branch Name"] = np.where(
+                standardized_df["Branch Name"] = df[selected_branch]
 
-                    standardized_df["Branch Name"]
+            if selected_zone != "":
 
-                    .astype(str)
+                standardized_df["Zone"] = df[selected_zone]
 
-                    .str.lower()
+            if selected_loan_type != "":
 
-                    .str.contains(
-
-                        "name|member|borrower|nominee",
-
-                        na=False
-
-                    ),
-
-                    np.nan,
-
-                    standardized_df["Branch Name"]
-
-                )
+                standardized_df["Loan Type"] = df[selected_loan_type]
 
             # =====================================================
             # CLEAN MONEY
@@ -658,7 +676,7 @@ if uploaded_files:
             clean_dob = clean_date(raw_dob)
 
             # =====================================================
-            # KEEP START DATE ONLY IF VALID
+            # VALID START DATE
             # =====================================================
 
             standardized_df["Loan Disbursement Date (DDMMYYYY)"] = np.where(
@@ -684,7 +702,7 @@ if uploaded_files:
             )
 
             # =====================================================
-            # KEEP END DATE ONLY IF VALID
+            # VALID END DATE
             # =====================================================
 
             standardized_df["Loan End date (DDMMYYYY)"] = np.where(
@@ -736,7 +754,7 @@ if uploaded_files:
             )
 
             # =====================================================
-            # CALCULATE LOAN TERM ONLY IF VALID
+            # CALCULATE LOAN TERM
             # =====================================================
 
             start_date = pd.to_datetime(
@@ -826,7 +844,7 @@ if uploaded_files:
             )
 
             # =====================================================
-            # PREMIUM ONLY IF SA EXISTS
+            # PREMIUM
             # =====================================================
 
             standardized_df["Rate"] = np.where(
