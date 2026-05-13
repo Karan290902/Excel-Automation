@@ -1,12 +1,12 @@
 # =====================================================
-# IMPORTS
+# INSURANCE AI STANDARDIZATION ENGINE
+# STRICT RULE-BASED VERSION
 # =====================================================
 
 import streamlit as st
 import pandas as pd
 import numpy as np
 from io import BytesIO
-from difflib import SequenceMatcher
 import re
 
 # =====================================================
@@ -14,15 +14,15 @@ import re
 # =====================================================
 
 st.set_page_config(
-    page_title="Insurance AI Mapper",
+    page_title="Insurance Mapper",
     page_icon="📊",
     layout="wide"
 )
 
-st.title("📊 Insurance AI Standardization Engine")
+st.title("📊 Insurance Data Standardization Engine")
 
 st.write(
-    "Upload insurance excel files and generate insurer-ready output automatically."
+    "Upload insurance excel files and generate insurer-ready output."
 )
 
 # =====================================================
@@ -91,90 +91,53 @@ MASTER_COLUMNS = [
 ]
 
 # =====================================================
-# ALIASES
+# STRICT COLUMN RULES
 # =====================================================
 
-ALIASES = {
+COLUMN_RULES = {
 
     "Loan Account No.": [
-
-        "loan account no",
-        "loan account",
-        "loan ac",
-        "loan a/c",
         "a/c number",
         "account number",
         "account no",
-        "membership no",
-        "membership number",
-        "member id",
-        "certificate no",
-        "certificate number"
-
+        "loan account no",
+        "membership no"
     ],
 
     "Name of Primary Loan borrower": [
-
-        "member name",
-        "customer name",
-        "borrower name",
-        "insured name",
-        "client name",
-        "full name",
-        "name"
-
+        "member name"
     ],
 
     "Gender": [
-        "gender",
-        "sex"
+        "gender"
     ],
 
     "Date of Birth (DDMMMYYYY)": [
-
         "dob",
-        "date of birth",
-        "birth date",
-        "d.o.b"
-
+        "date of birth"
     ],
 
     "MAIN MEMBER AGE": [
-        "age",
-        "member age",
-        "insured age"
+        "age"
+    ],
+
+    "Mobile No": [
+        "mobile number",
+        "mobile no",
+        "mobile"
     ],
 
     "Pincode": [
         "pincode",
-        "pin code",
-        "postal code"
-    ],
-
-    "Mobile No": [
-
-        "mobile number",
-        "mobile no",
-        "mobile",
-        "mob no",
-        "mob",
-        "phone",
-        "phone no",
-        "contact no"
-
+        "pin code"
     ],
 
     "Nominee Name": [
-        "nominee name",
-        "nominee"
+        "nominee name"
     ],
 
     "Relationship of the Nominee with Insurance covered Person": [
-
-        "nominee relationship",
-        "relationship",
-        "relation"
-
+        "nominee relationship"
     ],
 
     "Nominee Age": [
@@ -182,122 +145,49 @@ ALIASES = {
     ],
 
     "Loan Outstanding Amount": [
-
-        "loan amount",
-        "loan amt",
-        "outstanding amount",
-        "loan outstanding",
-        "disbursed amount"
-
+        "loan amount"
     ],
 
     "Sum Assured": [
-
         "sum assured",
-        "sum insured",
-        "coverage",
-        "sa"
-
+        "sum insured"
     ],
 
     "Loan Disbursement Date (DDMMYYYY)": [
-
-        "loan start date",
-        "loan disbursement date",
-        "disbursement date",
-        "loan start"
-
+        "loan start date"
     ],
 
     "Loan End date (DDMMYYYY)": [
-
-        "loan end date",
-        "loan expiry date",
-        "loan end"
-
+        "loan end date"
     ],
 
     "Address            (First Life)": [
-
         "address",
-        "residential address",
-        "communication address",
         "society name"
-
     ],
 
     "Address 1            (First Life)": [
-
         "district",
-        "place",
-        "city",
-        "location"
-
+        "place"
     ]
 
 }
 
 # =====================================================
-# SMART COLUMN DETECTION
+# FIND COLUMN
 # =====================================================
 
-def detect_column(columns, aliases):
-
-    best_match = None
-    best_score = 0
+def find_column(columns, keywords):
 
     for col in columns:
 
-        clean_col = (
+        clean_col = str(col).lower().strip()
 
-            str(col)
+        for keyword in keywords:
 
-            .lower()
+            if keyword in clean_col:
 
-            .replace("_", " ")
-
-            .replace("-", " ")
-
-            .replace("/", " ")
-
-            .replace(".", " ")
-
-            .replace("\n", " ")
-
-            .strip()
-
-        )
-
-        for alias in aliases:
-
-            alias_clean = alias.lower().strip()
-
-            if alias_clean in clean_col:
-
-                score = 100
-
-            elif any(
-                word in clean_col
-                for word in alias_clean.split()
-            ):
-
-                score = 85
-
-            else:
-
-                score = SequenceMatcher(
-                    None,
-                    clean_col,
-                    alias_clean
-                ).ratio() * 100
-
-            if score > best_score:
-
-                best_score = score
-                best_match = col
-
-    if best_score >= 40:
-        return best_match
+                return col
 
     return None
 
@@ -307,7 +197,7 @@ def detect_column(columns, aliases):
 
 def clean_money(series):
 
-    cleaned = (
+    series = (
 
         series.astype(str)
 
@@ -315,19 +205,12 @@ def clean_money(series):
 
         .str.replace("₹", "", regex=False)
 
-        .str.replace("/-", "", regex=False)
-
         .str.strip()
 
     )
 
-    cleaned = cleaned.replace(
-        ["", "nan", "None"],
-        np.nan
-    )
-
     return pd.to_numeric(
-        cleaned,
+        series,
         errors="coerce"
     )
 
@@ -338,8 +221,6 @@ def clean_mobile(series):
         series.astype(str)
 
         .str.replace(r"\D", "", regex=True)
-
-        .str[-10:]
 
     )
 
@@ -357,8 +238,6 @@ def clean_pincode(series):
 
         .str.replace(r"\D", "", regex=True)
 
-        .str[-6:]
-
     )
 
     cleaned = cleaned.where(
@@ -375,7 +254,7 @@ def clean_age(series):
     )
 
     cleaned = cleaned.where(
-        cleaned.between(0, 99)
+        cleaned.between(1, 99)
     )
 
     return cleaned
@@ -398,8 +277,8 @@ def remove_total_rows(df):
     keywords = [
         "total",
         "grand total",
-        "summary",
-        "subtotal"
+        "subtotal",
+        "summary"
     ]
 
     mask = pd.Series(
@@ -457,7 +336,7 @@ if uploaded_files:
         try:
 
             # =====================================================
-            # READ RAW FILE
+            # READ RAW
             # =====================================================
 
             raw_df = pd.read_excel(
@@ -467,7 +346,7 @@ if uploaded_files:
 
             header_row = 0
 
-            for i in range(min(15, len(raw_df))):
+            for i in range(min(10, len(raw_df))):
 
                 row_text = " ".join(
 
@@ -483,7 +362,6 @@ if uploaded_files:
 
                 if (
                     "member" in row_text
-                    or "name" in row_text
                     or "account" in row_text
                     or "loan" in row_text
                 ):
@@ -514,7 +392,7 @@ if uploaded_files:
             df = remove_total_rows(df)
 
             # =====================================================
-            # CLEAN COLUMNS
+            # CLEAN COLUMN NAMES
             # =====================================================
 
             df.columns = [
@@ -532,7 +410,7 @@ if uploaded_files:
             ]
 
             # =====================================================
-            # CREATE OUTPUT DF
+            # OUTPUT DF
             # =====================================================
 
             standardized_df = pd.DataFrame()
@@ -541,22 +419,19 @@ if uploaded_files:
                 standardized_df[col] = np.nan
 
             # =====================================================
-            # AUTO MAPPING
+            # STRICT MAPPING
             # =====================================================
 
-            for output_col, aliases in ALIASES.items():
+            for output_col, keywords in COLUMN_RULES.items():
 
-                detected_col = detect_column(
+                matched_col = find_column(
                     df.columns,
-                    aliases
+                    keywords
                 )
 
-                if (
-                    detected_col is not None
-                    and detected_col in df.columns
-                ):
+                if matched_col is not None:
 
-                    standardized_df[output_col] = df[detected_col]
+                    standardized_df[output_col] = df[matched_col]
 
             # =====================================================
             # LOAN TYPE
@@ -565,8 +440,24 @@ if uploaded_files:
             standardized_df["Loan Type"] = loan_type
 
             # =====================================================
-            # CLEAN MONEY
+            # CLEAN IMPORTANT FIELDS
             # =====================================================
+
+            standardized_df["Mobile No"] = clean_mobile(
+                standardized_df["Mobile No"]
+            )
+
+            standardized_df["Pincode"] = clean_pincode(
+                standardized_df["Pincode"]
+            )
+
+            standardized_df["MAIN MEMBER AGE"] = clean_age(
+                standardized_df["MAIN MEMBER AGE"]
+            )
+
+            standardized_df["Nominee Age"] = clean_age(
+                standardized_df["Nominee Age"]
+            )
 
             standardized_df["Loan Outstanding Amount"] = clean_money(
                 standardized_df["Loan Outstanding Amount"]
@@ -577,25 +468,29 @@ if uploaded_files:
             )
 
             # =====================================================
-            # SUM ASSURED LOGIC
+            # ADDRESS CLEANING
             # =====================================================
 
-            standardized_df["Final SA"] = np.where(
+            standardized_df["Address            (First Life)"] = np.where(
 
-                standardized_df["Sum Assured"].notna(),
+                standardized_df[
+                    "Address            (First Life)"
+                ]
 
-                standardized_df["Sum Assured"],
+                .astype(str)
 
-                standardized_df["Loan Outstanding Amount"]
+                .str.contains(r"[A-Za-z]", regex=True),
+
+                standardized_df[
+                    "Address            (First Life)"
+                ],
+
+                np.nan
 
             )
 
-            standardized_df["Sum Assured"] = standardized_df["Final SA"]
-
-            standardized_df["Aviva Calculation SA"] = standardized_df["Final SA"]
-
             # =====================================================
-            # CLEAN DATES
+            # DOB
             # =====================================================
 
             standardized_df["Date of Birth (DDMMMYYYY)"] = clean_date(
@@ -643,6 +538,24 @@ if uploaded_files:
             )
 
             # =====================================================
+            # SUM ASSURED LOGIC
+            # =====================================================
+
+            standardized_df["Final SA"] = np.where(
+
+                standardized_df["Sum Assured"].notna(),
+
+                standardized_df["Sum Assured"],
+
+                standardized_df["Loan Outstanding Amount"]
+
+            )
+
+            standardized_df["Sum Assured"] = standardized_df["Final SA"]
+
+            standardized_df["Aviva Calculation SA"] = standardized_df["Final SA"]
+
+            # =====================================================
             # LOAN TERM
             # =====================================================
 
@@ -677,79 +590,7 @@ if uploaded_files:
             ).round(1)
 
             # =====================================================
-            # CLEAN MOBILE
-            # =====================================================
-
-            standardized_df["Mobile No"] = clean_mobile(
-                standardized_df["Mobile No"]
-            )
-
-            # =====================================================
-            # CLEAN ADDRESS
-            # =====================================================
-
-            standardized_df["Address            (First Life)"] = np.where(
-
-                standardized_df[
-                    "Address            (First Life)"
-                ]
-
-                .astype(str)
-
-                .str.replace(r"\D", "", regex=True)
-
-                .str.len()
-
-                >= 10,
-
-                np.nan,
-
-                standardized_df[
-                    "Address            (First Life)"
-                ]
-
-            )
-
-            standardized_df["Address            (First Life)"] = np.where(
-
-                standardized_df[
-                    "Address            (First Life)"
-                ]
-
-                .astype(str)
-
-                .str.contains(r"[A-Za-z]", regex=True),
-
-                standardized_df[
-                    "Address            (First Life)"
-                ],
-
-                np.nan
-
-            )
-
-            # =====================================================
-            # CLEAN PINCODE
-            # =====================================================
-
-            standardized_df["Pincode"] = clean_pincode(
-                standardized_df["Pincode"]
-            )
-
-            # =====================================================
-            # CLEAN AGE
-            # =====================================================
-
-            standardized_df["MAIN MEMBER AGE"] = clean_age(
-                standardized_df["MAIN MEMBER AGE"]
-            )
-
-            standardized_df["Nominee Age"] = clean_age(
-                standardized_df["Nominee Age"]
-            )
-
-            # =====================================================
-            # REMOVE SAME NOMINEE NAME
+            # REMOVE SAME NOMINEE
             # =====================================================
 
             standardized_df["Nominee Name"] = np.where(
@@ -762,7 +603,9 @@ if uploaded_files:
 
                 ==
 
-                standardized_df["Name of Primary Loan borrower"]
+                standardized_df[
+                    "Name of Primary Loan borrower"
+                ]
 
                 .astype(str)
 
@@ -794,12 +637,10 @@ if uploaded_files:
 
                 if valid_mask.any():
 
-                    mobile_col = detect_column(
+                    if col != find_column(
                         df.columns,
-                        ALIASES["Mobile No"]
-                    )
-
-                    if col != mobile_col:
+                        COLUMN_RULES["Mobile No"]
+                    ):
 
                         standardized_df[
                             "Type of    Age Proof"
@@ -808,7 +649,7 @@ if uploaded_files:
                         break
 
             # =====================================================
-            # PREMIUM CALCULATIONS
+            # PREMIUM CALCULATION
             # =====================================================
 
             standardized_df["Rate"] = RATE_PER_LAKH
@@ -884,10 +725,8 @@ if uploaded_files:
 
     st.subheader("📋 Final Output")
 
-    display_df = final_master_df.astype(str)
-
     st.dataframe(
-        display_df,
+        final_master_df.astype(str),
         width="stretch"
     )
 
@@ -914,9 +753,3 @@ if uploaded_files:
         file_name="Final_Aviva_Output.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-
-st.markdown("---")
-
-st.caption(
-    "Built for Insurance Underwriting Automation"
-)
