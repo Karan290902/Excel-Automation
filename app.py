@@ -1,142 +1,233 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 from io import BytesIO
 
-# ============================================
+# =====================================================
 # PAGE CONFIG
-# ============================================
+# =====================================================
 
 st.set_page_config(
-    page_title="Insurance Standardization Engine",
+    page_title="Insurance Data Standardization Engine",
     page_icon="📊",
     layout="wide"
 )
 
-# ============================================
-# HEADER
-# ============================================
+# =====================================================
+# TITLE
+# =====================================================
 
 st.title("📊 Insurance Data Standardization Engine")
 
 st.write(
-    "Upload multiple insurance Excel files and convert them into one fixed insurer format."
+    "Upload multiple insurance Excel files with different formats and generate one fixed insurer-ready output file."
 )
 
-# ============================================
+# =====================================================
 # SETTINGS
-# ============================================
+# =====================================================
 
 RATE_PER_LAKH = 320.3
 GST_RATE = 0.18
 
-# ============================================
-# MASTER OUTPUT FORMAT
-# ============================================
+# =====================================================
+# FIXED OUTPUT FORMAT
+# =====================================================
 
 MASTER_COLUMNS = [
 
-    'Sr. no.',
-    'Zone',
-    'Branch Name',
-    'Branch Code',
-    'Loan Type',
-    'Loan Account No.',
-    'Name of Primary Loan borrower',
-    'Gender',
-    'Date of Birth (DDMMMYYYY)',
-    'Mobile No',
-    'Loan Outstanding Amount',
-    'Sum Assured',
-    'Rate',
-    'Premium (Excl. GST)',
-    'GST amount',
-    'Total Premium (incl GST)',
-    'Aviva Remarks'
+    "Sr. no.",
+    "Zone",
+    "Branch Name",
+    "Branch Code",
+    "Loan Type",
+    "Loan Account No.",
+    "Name of Primary Loan borrower",
+    "Name of Coborrower(if applicable)",
+    "Loan Amount Coborrower",
+    "Gender",
+    "Date of Birth (DDMMMYYYY)",
+    "Type of    Age Proof",
+    "Address            (First Life)",
+    "Address 1            (First Life)",
+    "Address 2            (First Life)",
+    "Pincode",
+    "Mobile No",
+    "Email Id",
+    "Nominee Name",
+    "Relationship of the Nominee with Insurance covered Person",
+    "Nominee DOB(DDMMMYYYY)*please mention name of the month Eg 10Feb1991",
+    "Nominee Age",
+    "Appointee Name",
+    "Relationship with Borrower",
+    "Appointee DOB(DDMMMYYYY)*please mention name of the month Eg 10Feb1991",
+    "Loan Outstanding Amount",
+    "Sum Assured",
+    "Loan Disbursement Date (DDMMYYYY)",
+    "Loan End date (DDMMYYYY)",
+    "Loan Term (in months)",
+    "Loan Term (Year)",
+    "MAIN MEMBER AGE",
+    "Rate",
+    "Premium (Excl. GST)",
+    "GST amount",
+    "Total Premium (incl GST)",
+    "Premium Transfer Amount",
+    "Premium Transfer Date to Aviva",
+    "Premium Transaction ID/JOURNAL NUMBER/UTR",
+    "DGH / Membeship form Collected (Yes/No)",
+    "Any adverse answer to DGH Questioniare (Yes/No)",
+    "Date when Applicant Signed",
+    "Height of Person covered",
+    "Weight of Person covered",
+    "Aviva Calculation SA",
+    "Premium Excl. Gst",
+    "GST",
+    "Total Premium",
+    "Aviva Remarks"
 
 ]
 
-# ============================================
-# COLUMN ALIASES
-# ============================================
+# =====================================================
+# SMART COLUMN ALIASES
+# =====================================================
 
 ALIASES = {
 
-    'Loan Account No.': [
+    "Loan Account No.": [
 
-        'a/c number',
-        'account no',
-        'loan account no',
-        'membership no',
-        'lan'
-
-    ],
-
-    'Name of Primary Loan borrower': [
-
-        'member name',
-        'customer name',
-        'borrower name',
-        'name'
+        "loan account",
+        "account no",
+        "a/c number",
+        "membership no",
+        "loan no",
+        "lan"
 
     ],
 
-    'Gender': [
+    "Name of Primary Loan borrower": [
 
-        'gender',
-        'sex'
-
-    ],
-
-    'Date of Birth (DDMMMYYYY)': [
-
-        'dob',
-        'date of birth'
+        "member name",
+        "customer name",
+        "borrower name",
+        "insured name",
+        "primary borrower",
+        "name"
 
     ],
 
-    'Mobile No': [
+    "Gender": [
 
-        'mobile',
-        'mobile number',
-        'phone'
-
-    ],
-
-    'Branch Name': [
-
-        'branch',
-        'branch name'
+        "gender",
+        "sex"
 
     ],
 
-    'Loan Outstanding Amount': [
+    "Date of Birth (DDMMMYYYY)": [
 
-        'loan amount',
-        'outstanding amount'
+        "dob",
+        "date of birth",
+        "birth date"
 
     ],
 
-    'Sum Assured': [
+    "Mobile No": [
 
-        'sum assured',
-        'sum insured',
-        'coverage',
-        'calculation sa',
-        'sa'
+        "mobile",
+        "mobile number",
+        "phone",
+        "contact"
+
+    ],
+
+    "Address            (First Life)": [
+
+        "address",
+        "residence"
+
+    ],
+
+    "Pincode": [
+
+        "pincode",
+        "pin code",
+        "zip"
+
+    ],
+
+    "Branch Name": [
+
+        "branch",
+        "branch name"
+
+    ],
+
+    "Loan Outstanding Amount": [
+
+        "loan amount",
+        "outstanding amount",
+        "loan outstanding"
+
+    ],
+
+    "Sum Assured": [
+
+        "sum assured",
+        "sum insured",
+        "coverage",
+        "insured amount",
+        "calculation sa",
+        "aviva calculation sa",
+        "sa"
+
+    ],
+
+    "Nominee Name": [
+
+        "nominee"
+
+    ],
+
+    "Nominee Age": [
+
+        "nominee age"
+
+    ],
+
+    "Loan Disbursement Date (DDMMYYYY)": [
+
+        "loan start",
+        "disbursement"
+
+    ],
+
+    "Loan End date (DDMMYYYY)": [
+
+        "loan end",
+        "loan maturity"
+
+    ],
+
+    "MAIN MEMBER AGE": [
+
+        "age",
+        "member age"
 
     ]
 
 }
 
-# ============================================
-# DETECT COLUMN FUNCTION
-# ============================================
+# =====================================================
+# COLUMN DETECTION FUNCTION
+# =====================================================
 
-def detect_column(df_columns, aliases):
+def detect_column(columns, aliases):
 
-    for col in df_columns:
+    for col in columns:
 
         cleaned_col = str(col).lower().strip()
+
+        cleaned_col = cleaned_col.replace("_", " ")
 
         for alias in aliases:
 
@@ -146,58 +237,79 @@ def detect_column(df_columns, aliases):
 
     return None
 
-# ============================================
+# =====================================================
 # FILE UPLOAD
-# ============================================
+# =====================================================
 
 uploaded_files = st.file_uploader(
-    "📂 Upload Excel Files",
-    type=['xlsx'],
+
+    "📂 Upload Insurance Excel Files",
+
+    type=["xlsx"],
+
     accept_multiple_files=True
+
 )
 
-# ============================================
+# =====================================================
 # PROCESS FILES
-# ============================================
+# =====================================================
 
 if uploaded_files:
 
     final_master_df = pd.DataFrame()
 
+    error_log = []
+
     for file in uploaded_files:
 
         try:
 
+            # =====================================================
+            # READ FILE
+            # =====================================================
+
             df = pd.read_excel(file)
+
+            df = df.copy()
+
+            # REMOVE EMPTY ROWS
 
             df.dropna(
                 how='all',
                 inplace=True
             )
 
+            # CLEAN COLUMN NAMES
+
             df.columns = df.columns.astype(str)
 
             df.columns = df.columns.str.strip()
 
-            # ============================================
-            # CREATE STANDARD OUTPUT
-            # ============================================
+            # =====================================================
+            # CREATE STANDARDIZED DATAFRAME
+            # =====================================================
 
             standardized_df = pd.DataFrame()
 
             for col in MASTER_COLUMNS:
 
-                standardized_df[col] = 'NA'
+                standardized_df[col] = "NA"
 
-            # ============================================
-            # MAP COLUMNS
-            # ============================================
+            # =====================================================
+            # AUTO COLUMN MAPPING
+            # =====================================================
 
-            for standard_col, aliases in ALIASES.items():
+            detected_mapping = {}
+
+            for standard_col, alias_list in ALIASES.items():
 
                 detected_col = detect_column(
+
                     df.columns,
-                    aliases
+
+                    alias_list
+
                 )
 
                 if detected_col:
@@ -206,43 +318,59 @@ if uploaded_files:
                         standard_col
                     ] = df[detected_col]
 
-            # ============================================
-            # CLEAN SA
-            # ============================================
+                    detected_mapping[
+                        standard_col
+                    ] = detected_col
 
-            standardized_df['Sum Assured'] = (
+            # =====================================================
+            # SHOW DETECTED MAPPING
+            # =====================================================
 
-                standardized_df['Sum Assured']
+            with st.expander(f"🧠 Mapping - {file.name}"):
+
+                st.write(detected_mapping)
+
+            # =====================================================
+            # CLEAN SUM ASSURED
+            # =====================================================
+
+            standardized_df["Sum Assured"] = (
+
+                standardized_df["Sum Assured"]
+
                 .astype(str)
-                .str.replace(',', '')
-                .str.replace('₹', '')
+
+                .str.replace(",", "")
+
+                .str.replace("₹", "")
+
                 .str.strip()
 
             )
 
-            standardized_df['Sum Assured'] = pd.to_numeric(
+            standardized_df["Sum Assured"] = pd.to_numeric(
 
-                standardized_df['Sum Assured'],
+                standardized_df["Sum Assured"],
 
-                errors='coerce'
+                errors="coerce"
 
             ).fillna(0)
 
-            # ============================================
+            # =====================================================
             # REMOVE INVALID ROWS
-            # ============================================
+            # =====================================================
 
             standardized_df = standardized_df[
 
-                standardized_df['Sum Assured'] > 0
+                standardized_df["Sum Assured"] > 0
 
             ]
 
-            # ============================================
+            # =====================================================
             # SERIAL NUMBER
-            # ============================================
+            # =====================================================
 
-            standardized_df['Sr. no.'] = range(
+            standardized_df["Sr. no."] = range(
 
                 1,
 
@@ -250,61 +378,89 @@ if uploaded_files:
 
             )
 
-            # ============================================
+            # =====================================================
             # RATE
-            # ============================================
+            # =====================================================
 
-            standardized_df['Rate'] = RATE_PER_LAKH
+            standardized_df["Rate"] = RATE_PER_LAKH
 
-            # ============================================
-            # PREMIUM
-            # ============================================
+            # =====================================================
+            # PREMIUM CALCULATION
+            # =====================================================
 
-            standardized_df['Premium (Excl. GST)'] = (
+            standardized_df["Premium (Excl. GST)"] = (
 
-                standardized_df['Sum Assured']
+                standardized_df["Sum Assured"]
 
                 / 100000
 
             ) * RATE_PER_LAKH
 
-            # ============================================
+            # =====================================================
             # GST
-            # ============================================
+            # =====================================================
 
-            standardized_df['GST amount'] = (
+            standardized_df["GST amount"] = (
 
-                standardized_df['Premium (Excl. GST)']
+                standardized_df["Premium (Excl. GST)"]
 
                 * GST_RATE
 
             )
 
-            # ============================================
+            # =====================================================
             # TOTAL PREMIUM
-            # ============================================
+            # =====================================================
 
-            standardized_df['Total Premium (incl GST)'] = (
+            standardized_df["Total Premium (incl GST)"] = (
 
-                standardized_df['Premium (Excl. GST)']
+                standardized_df["Premium (Excl. GST)"]
 
-                + standardized_df['GST amount']
+                + standardized_df["GST amount"]
 
             )
 
-            # ============================================
+            # =====================================================
+            # DUPLICATE AVIVA FIELDS
+            # =====================================================
+
+            standardized_df["Aviva Calculation SA"] = (
+
+                standardized_df["Sum Assured"]
+
+            )
+
+            standardized_df["Premium Excl. Gst"] = (
+
+                standardized_df["Premium (Excl. GST)"]
+
+            )
+
+            standardized_df["GST"] = (
+
+                standardized_df["GST amount"]
+
+            )
+
+            standardized_df["Total Premium"] = (
+
+                standardized_df["Total Premium (incl GST)"]
+
+            )
+
+            # =====================================================
             # REMARKS
-            # ============================================
+            # =====================================================
 
-            standardized_df['Aviva Remarks'] = (
+            standardized_df["Aviva Remarks"] = (
 
-                'Processed Successfully'
+                "Processed Successfully"
 
             )
 
-            # ============================================
-            # APPEND FILE
-            # ============================================
+            # =====================================================
+            # APPEND FINAL DATA
+            # =====================================================
 
             final_master_df = pd.concat(
 
@@ -316,79 +472,131 @@ if uploaded_files:
 
         except Exception as e:
 
-            st.error(
-                f"Error in {file.name}: {e}"
-            )
+            error_log.append({
 
-    # ============================================
+                "File": file.name,
+
+                "Error": str(e)
+
+            })
+
+    # =====================================================
     # DASHBOARD
-    # ============================================
+    # =====================================================
 
     st.subheader("📊 Portfolio Summary")
 
-    col1, col2, col3, col4 = st.columns(4)
+    total_members = len(final_master_df)
+
+    total_sa = final_master_df["Sum Assured"].sum()
+
+    total_premium = final_master_df["Premium (Excl. GST)"].sum()
+
+    total_gst = final_master_df["GST amount"].sum()
+
+    total_total = final_master_df["Total Premium (incl GST)"].sum()
+
+    col1, col2, col3, col4, col5 = st.columns(5)
 
     with col1:
 
         st.metric(
             "Total Members",
-            len(final_master_df)
+            total_members
         )
 
     with col2:
 
         st.metric(
             "Total SA",
-            f"₹ {final_master_df['Sum Assured'].sum():,.0f}"
+            f"₹ {total_sa:,.0f}"
         )
 
     with col3:
 
         st.metric(
-            "Total GST",
-            f"₹ {final_master_df['GST amount'].sum():,.2f}"
+            "Premium Excl GST",
+            f"₹ {total_premium:,.2f}"
         )
 
     with col4:
 
         st.metric(
-            "Total Premium",
-            f"₹ {final_master_df['Total Premium (incl GST)'].sum():,.2f}"
+            "Total GST",
+            f"₹ {total_gst:,.2f}"
         )
 
-    # ============================================
-    # SHOW OUTPUT
-    # ============================================
+    with col5:
 
-    st.subheader("📋 Final Output")
+        st.metric(
+            "Total Premium",
+            f"₹ {total_total:,.2f}"
+        )
+
+    # =====================================================
+    # OUTPUT TABLE
+    # =====================================================
+
+    st.subheader("📋 Final Standardized Output")
 
     st.dataframe(
         final_master_df,
         use_container_width=True
     )
 
-    # ============================================
-    # DOWNLOAD FILE
-    # ============================================
+    # =====================================================
+    # ERROR REPORT
+    # =====================================================
+
+    if len(error_log) > 0:
+
+        st.subheader("⚠ Error Report")
+
+        error_df = pd.DataFrame(error_log)
+
+        st.dataframe(error_df)
+
+    # =====================================================
+    # DOWNLOAD EXCEL
+    # =====================================================
 
     output = BytesIO()
 
     with pd.ExcelWriter(
+
         output,
+
         engine='openpyxl'
+
     ) as writer:
 
         final_master_df.to_excel(
+
             writer,
+
             index=False,
+
             sheet_name='Final Output'
+
         )
+
+        if len(error_log) > 0:
+
+            error_df.to_excel(
+
+                writer,
+
+                index=False,
+
+                sheet_name='Errors'
+
+            )
 
     processed_data = output.getvalue()
 
     st.download_button(
 
-        label="⬇ Download Final Excel",
+        label="⬇ Download Final Standardized Excel",
 
         data=processed_data,
 
@@ -397,3 +605,13 @@ if uploaded_files:
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
     )
+
+# =====================================================
+# FOOTER
+# =====================================================
+
+st.markdown("---")
+
+st.caption(
+    "Built for Insurance Underwriting & Data Standardization"
+)
