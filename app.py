@@ -1,3 +1,7 @@
+# =====================================================
+# IMPORTS
+# =====================================================
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -181,8 +185,12 @@ ALIASES = {
     ],
 
     "Address            (First Life)": [
+
         "address",
-        "society name"
+        "society name",
+        "residence address",
+        "communication address"
+
     ],
 
     "Address 1            (First Life)": [
@@ -220,8 +228,6 @@ def detect_column(columns, aliases):
         for alias in aliases:
 
             alias_clean = alias.lower().strip()
-
-            # DIRECT MATCH BOOST
 
             if alias_clean in clean_col:
 
@@ -696,6 +702,98 @@ if uploaded_files:
             )
 
             # =====================================================
+            # CLEAN ADDRESS FIELD
+            # =====================================================
+
+            standardized_df["Address            (First Life)"] = np.where(
+
+                standardized_df[
+                    "Address            (First Life)"
+                ]
+
+                .astype(str)
+
+                .str.replace(r"\D", "", regex=True)
+
+                .str.len()
+
+                >= 10,
+
+                np.nan,
+
+                standardized_df[
+                    "Address            (First Life)"
+                ]
+
+            )
+
+            standardized_df["Address            (First Life)"] = np.where(
+
+                standardized_df[
+                    "Address            (First Life)"
+                ]
+
+                .astype(str)
+
+                .str.fullmatch(r"\d+"),
+
+                np.nan,
+
+                standardized_df[
+                    "Address            (First Life)"
+                ]
+
+            )
+
+            standardized_df["Address            (First Life)"] = np.where(
+
+                standardized_df[
+                    "Address            (First Life)"
+                ]
+
+                .astype(str)
+
+                .str.contains(
+
+                    r"[A-Za-z]",
+
+                    regex=True
+
+                ),
+
+                standardized_df[
+                    "Address            (First Life)"
+                ],
+
+                np.nan
+
+            )
+
+            standardized_df["Address            (First Life)"] = np.where(
+
+                standardized_df[
+                    "Address            (First Life)"
+                ]
+
+                .astype(str)
+
+                ==
+
+                standardized_df[
+                    "Mobile No"
+                ]
+
+                .astype(str),
+
+                np.nan,
+
+                standardized_df[
+                    "Address            (First Life)"
+                ]
+
+            )
+
+            # =====================================================
             # CLEAN PINCODE
             # =====================================================
 
@@ -771,8 +869,6 @@ if uploaded_files:
                 valid_mask = cleaned.str.len() == 10
 
                 if valid_mask.any():
-
-                    # avoid mobile number duplication
 
                     if col != detect_column(
                         df.columns,
@@ -870,11 +966,8 @@ if uploaded_files:
     # =====================================================
 
     final_master_df = final_master_df.replace(
-
         [np.inf, -np.inf],
-
         np.nan
-
     )
 
     final_master_df = final_master_df.fillna("")
