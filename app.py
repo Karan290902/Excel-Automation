@@ -188,11 +188,9 @@ def detect_column(columns, aliases):
         for alias in aliases:
 
             score = SequenceMatcher(
-
                 None,
                 clean_col,
                 alias
-
             ).ratio() * 100
 
             if score > best_score:
@@ -201,7 +199,6 @@ def detect_column(columns, aliases):
                 best_match = col
 
     if best_score >= 75:
-
         return best_match
 
     return None
@@ -225,7 +222,7 @@ def clean_money(series):
     )
 
     cleaned = cleaned.replace(
-        ["", "nan"],
+        ["", "nan", "None"],
         np.nan
     )
 
@@ -301,11 +298,13 @@ def remove_total_rows(df):
     keywords = [
         "total",
         "grand total",
-        "summary"
+        "summary",
+        "subtotal"
     ]
 
     mask = pd.Series(
-        [False] * len(df)
+        [False] * len(df),
+        index=df.index
     )
 
     for col in df.columns:
@@ -349,10 +348,6 @@ if uploaded_files:
 
     final_master_df = pd.DataFrame()
 
-    # =====================================================
-    # LOAN TYPE
-    # =====================================================
-
     loan_type = st.selectbox(
 
         "Select Loan Type",
@@ -361,477 +356,508 @@ if uploaded_files:
 
     )
 
-    for file in uploaded_files:
+    for file_index, file in enumerate(uploaded_files):
 
         st.markdown("---")
 
         st.subheader(f"📄 {file.name}")
 
-        # =====================================================
-        # READ RAW FILE
-        # =====================================================
+        try:
 
-        raw_df = pd.read_excel(
-            file,
-            header=None
-        )
+            # =====================================================
+            # READ RAW FILE
+            # =====================================================
 
-        header_row = 0
+            raw_df = pd.read_excel(
+                file,
+                header=None
+            )
 
-        for i in range(min(10, len(raw_df))):
+            header_row = 0
 
-            row_text = " ".join(
+            for i in range(min(10, len(raw_df))):
 
-                raw_df.iloc[i]
+                row_text = " ".join(
+
+                    raw_df.iloc[i]
+
+                    .astype(str)
+
+                    .fillna("")
+
+                    .tolist()
+
+                ).lower()
+
+                if (
+
+                    "member" in row_text
+
+                    or
+
+                    "name" in row_text
+
+                    or
+
+                    "account" in row_text
+
+                ):
+
+                    header_row = i
+                    break
+
+            # =====================================================
+            # READ CLEAN FILE
+            # =====================================================
+
+            df = pd.read_excel(
+                file,
+                header=header_row
+            )
+
+            df.dropna(
+                how="all",
+                inplace=True
+            )
+
+            df.dropna(
+                axis=1,
+                how="all",
+                inplace=True
+            )
+
+            df = remove_total_rows(df)
+
+            # =====================================================
+            # CLEAN COLUMN NAMES
+            # =====================================================
+
+            df.columns = [
+
+                str(col)
+
+                .replace("\n", " ")
+
+                .replace("_", " ")
+
+                .strip()
+
+                for col in df.columns
+
+            ]
+
+            # =====================================================
+            # OUTPUT DF
+            # =====================================================
+
+            standardized_df = pd.DataFrame()
+
+            for col in MASTER_COLUMNS:
+
+                standardized_df[col] = np.nan
+
+            # =====================================================
+            # AUTO MAP
+            # =====================================================
+
+            for output_col, aliases in ALIASES.items():
+
+                detected_col = detect_column(
+                    df.columns,
+                    aliases
+                )
+
+                if (
+
+                    detected_col is not None
+
+                    and
+
+                    detected_col in df.columns
+
+                ):
+
+                    standardized_df[output_col] = df[detected_col]
+
+            # =====================================================
+            # LOAN TYPE
+            # =====================================================
+
+            standardized_df["Loan Type"] = loan_type
+
+            # =====================================================
+            # CLEAN MONEY
+            # =====================================================
+
+            standardized_df["Loan Outstanding Amount"] = clean_money(
+
+                standardized_df["Loan Outstanding Amount"]
+
+            )
+
+            standardized_df["Sum Assured"] = clean_money(
+
+                standardized_df["Sum Assured"]
+
+            )
+
+            # =====================================================
+            # SUM ASSURED LOGIC
+            # =====================================================
+
+            standardized_df["Final SA"] = np.where(
+
+                standardized_df["Sum Assured"].notna(),
+
+                standardized_df["Sum Assured"],
+
+                standardized_df["Loan Outstanding Amount"]
+
+            )
+
+            standardized_df["Sum Assured"] = standardized_df["Final SA"]
+
+            standardized_df["Aviva Calculation SA"] = standardized_df["Final SA"]
+
+            # =====================================================
+            # CLEAN DATES
+            # =====================================================
+
+            standardized_df["Date of Birth (DDMMMYYYY)"] = clean_date(
+
+                standardized_df["Date of Birth (DDMMMYYYY)"]
+
+            )
+
+            standardized_df["Loan Disbursement Date (DDMMYYYY)"] = clean_date(
+
+                standardized_df["Loan Disbursement Date (DDMMYYYY)"]
+
+            )
+
+            standardized_df["Loan End date (DDMMYYYY)"] = clean_date(
+
+                standardized_df["Loan End date (DDMMYYYY)"]
+
+            )
+
+            # =====================================================
+            # REMOVE DOB FROM LOAN DATES
+            # =====================================================
+
+            standardized_df["Loan Disbursement Date (DDMMYYYY)"] = np.where(
+
+                standardized_df["Loan Disbursement Date (DDMMYYYY)"]
+
+                ==
+
+                standardized_df["Date of Birth (DDMMMYYYY)"],
+
+                np.nan,
+
+                standardized_df["Loan Disbursement Date (DDMMYYYY)"]
+
+            )
+
+            standardized_df["Loan End date (DDMMYYYY)"] = np.where(
+
+                standardized_df["Loan End date (DDMMYYYY)"]
+
+                ==
+
+                standardized_df["Date of Birth (DDMMMYYYY)"],
+
+                np.nan,
+
+                standardized_df["Loan End date (DDMMYYYY)"]
+
+            )
+
+            # =====================================================
+            # LOAN TERM
+            # =====================================================
+
+            start_date = pd.to_datetime(
+
+                standardized_df[
+                    "Loan Disbursement Date (DDMMYYYY)"
+                ],
+
+                errors="coerce"
+
+            )
+
+            end_date = pd.to_datetime(
+
+                standardized_df[
+                    "Loan End date (DDMMYYYY)"
+                ],
+
+                errors="coerce"
+
+            )
+
+            valid_dates = (
+
+                start_date.notna()
+
+                &
+
+                end_date.notna()
+
+            )
+
+            months = np.where(
+
+                valid_dates,
+
+                (
+
+                    (end_date.dt.year - start_date.dt.year) * 12
+
+                    +
+
+                    (end_date.dt.month - start_date.dt.month)
+
+                ),
+
+                np.nan
+
+            )
+
+            standardized_df["Loan Term (in months)"] = pd.to_numeric(
+                months,
+                errors="coerce"
+            )
+
+            standardized_df["Loan Term (Year)"] = pd.to_numeric(
+
+                standardized_df["Loan Term (in months)"] / 12,
+
+                errors="coerce"
+
+            ).round(1)
+
+            # =====================================================
+            # CLEAN MOBILE
+            # =====================================================
+
+            standardized_df["Mobile No"] = clean_mobile(
+
+                standardized_df["Mobile No"]
+
+            )
+
+            # =====================================================
+            # CLEAN PINCODE
+            # =====================================================
+
+            standardized_df["Pincode"] = clean_pincode(
+
+                standardized_df["Pincode"]
+
+            )
+
+            # =====================================================
+            # CLEAN AGE
+            # =====================================================
+
+            standardized_df["MAIN MEMBER AGE"] = clean_age(
+
+                standardized_df["MAIN MEMBER AGE"]
+
+            )
+
+            standardized_df["Nominee Age"] = clean_age(
+
+                standardized_df["Nominee Age"]
+
+            )
+
+            # =====================================================
+            # REMOVE NOMINEE SAME AS MEMBER
+            # =====================================================
+
+            standardized_df["Nominee Name"] = np.where(
+
+                standardized_df["Nominee Name"]
 
                 .astype(str)
 
                 .str.lower()
 
-                .tolist()
+                ==
 
-            )
-
-            if (
-
-                "member" in row_text
-
-                or
-
-                "name" in row_text
-
-                or
-
-                "account" in row_text
-
-            ):
-
-                header_row = i
-                break
-
-        # =====================================================
-        # READ CLEAN FILE
-        # =====================================================
-
-        df = pd.read_excel(
-            file,
-            header=header_row
-        )
-
-        df.dropna(
-            how="all",
-            inplace=True
-        )
-
-        df.dropna(
-            axis=1,
-            how="all",
-            inplace=True
-        )
-
-        df = remove_total_rows(df)
-
-        # =====================================================
-        # CLEAN COLUMN NAMES
-        # =====================================================
-
-        df.columns = [
-
-            str(col)
-
-            .replace("\n", " ")
-
-            .replace("_", " ")
-
-            .strip()
-
-            for col in df.columns
-
-        ]
-
-        # =====================================================
-        # OUTPUT DF
-        # =====================================================
-
-        standardized_df = pd.DataFrame()
-
-        for col in MASTER_COLUMNS:
-
-            standardized_df[col] = np.nan
-
-        # =====================================================
-        # AUTO MAP
-        # =====================================================
-
-        for output_col, aliases in ALIASES.items():
-
-            detected_col = detect_column(
-                df.columns,
-                aliases
-            )
-
-            if detected_col is not None:
-
-                standardized_df[output_col] = df[detected_col]
-
-        # =====================================================
-        # LOAN TYPE
-        # =====================================================
-
-        standardized_df["Loan Type"] = loan_type
-
-        # =====================================================
-        # CLEAN IMPORTANT FIELDS
-        # =====================================================
-
-        standardized_df["Loan Outstanding Amount"] = clean_money(
-
-            standardized_df["Loan Outstanding Amount"]
-
-        )
-
-        standardized_df["Sum Assured"] = clean_money(
-
-            standardized_df["Sum Assured"]
-
-        )
-
-        # =====================================================
-        # SUM ASSURED LOGIC
-        # =====================================================
-
-        standardized_df["Final SA"] = np.where(
-
-            standardized_df["Sum Assured"].notna(),
-
-            standardized_df["Sum Assured"],
-
-            standardized_df["Loan Outstanding Amount"]
-
-        )
-
-        standardized_df["Sum Assured"] = standardized_df["Final SA"]
-
-        standardized_df["Aviva Calculation SA"] = standardized_df["Final SA"]
-
-        # =====================================================
-        # CLEAN DATES
-        # =====================================================
-
-        standardized_df["Date of Birth (DDMMMYYYY)"] = clean_date(
-
-            standardized_df["Date of Birth (DDMMMYYYY)"]
-
-        )
-
-        standardized_df["Loan Disbursement Date (DDMMYYYY)"] = clean_date(
-
-            standardized_df["Loan Disbursement Date (DDMMYYYY)"]
-
-        )
-
-        standardized_df["Loan End date (DDMMYYYY)"] = clean_date(
-
-            standardized_df["Loan End date (DDMMYYYY)"]
-
-        )
-
-        # =====================================================
-        # REMOVE DOB FROM LOAN DATES
-        # =====================================================
-
-        standardized_df["Loan Disbursement Date (DDMMYYYY)"] = np.where(
-
-            standardized_df["Loan Disbursement Date (DDMMYYYY)"]
-
-            ==
-
-            standardized_df["Date of Birth (DDMMMYYYY)"],
-
-            np.nan,
-
-            standardized_df["Loan Disbursement Date (DDMMYYYY)"]
-
-        )
-
-        standardized_df["Loan End date (DDMMYYYY)"] = np.where(
-
-            standardized_df["Loan End date (DDMMYYYY)"]
-
-            ==
-
-            standardized_df["Date of Birth (DDMMMYYYY)"],
-
-            np.nan,
-
-            standardized_df["Loan End date (DDMMYYYY)"]
-
-        )
-
-        # =====================================================
-        # LOAN TERM
-        # =====================================================
-
-        start_date = pd.to_datetime(
-
-            standardized_df[
-                "Loan Disbursement Date (DDMMYYYY)"
-            ],
-
-            errors="coerce"
-
-        )
-
-        end_date = pd.to_datetime(
-
-            standardized_df[
-                "Loan End date (DDMMYYYY)"
-            ],
-
-            errors="coerce"
-
-        )
-
-        valid_dates = (
-
-            start_date.notna()
-
-            &
-
-            end_date.notna()
-
-        )
-
-        months = np.where(
-
-            valid_dates,
-
-            (
-
-                (end_date.dt.year - start_date.dt.year) * 12
-
-                +
-
-                (end_date.dt.month - start_date.dt.month)
-
-            ),
-
-            np.nan
-
-        )
-
-        standardized_df["Loan Term (in months)"] = months
-
-        standardized_df["Loan Term (Year)"] = (
-
-            standardized_df[
-                "Loan Term (in months)"
-            ] / 12
-
-        ).round(1)
-
-        # =====================================================
-        # CLEAN MOBILE
-        # =====================================================
-
-        standardized_df["Mobile No"] = clean_mobile(
-
-            standardized_df["Mobile No"]
-
-        )
-
-        # =====================================================
-        # PINCODE
-        # =====================================================
-
-        standardized_df["Pincode"] = clean_pincode(
-
-            standardized_df["Pincode"]
-
-        )
-
-        # =====================================================
-        # AGE
-        # =====================================================
-
-        standardized_df["MAIN MEMBER AGE"] = clean_age(
-
-            standardized_df["MAIN MEMBER AGE"]
-
-        )
-
-        standardized_df["Nominee Age"] = clean_age(
-
-            standardized_df["Nominee Age"]
-
-        )
-
-        # =====================================================
-        # REMOVE NOMINEE SAME AS MEMBER
-        # =====================================================
-
-        standardized_df["Nominee Name"] = np.where(
-
-            standardized_df["Nominee Name"]
-
-            .astype(str)
-
-            .str.lower()
-
-            ==
-
-            standardized_df["Name of Primary Loan borrower"]
-
-            .astype(str)
-
-            .str.lower(),
-
-            np.nan,
-
-            standardized_df["Nominee Name"]
-
-        )
-
-        # =====================================================
-        # TYPE OF AGE PROOF
-        # =====================================================
-
-        possible_proof = None
-
-        for col in df.columns:
-
-            sample = (
-
-                df[col]
+                standardized_df["Name of Primary Loan borrower"]
 
                 .astype(str)
 
-                .str.replace(r"\D", "", regex=True)
+                .str.lower(),
+
+                np.nan,
+
+                standardized_df["Nominee Name"]
 
             )
 
-            if sample.str.len().eq(10).any():
+            # =====================================================
+            # TYPE OF AGE PROOF
+            # =====================================================
 
-                possible_proof = col
-                break
+            for col in df.columns:
 
-        if possible_proof is not None:
+                cleaned = (
 
-            standardized_df["Type of    Age Proof"] = df[possible_proof]
+                    df[col]
 
-        # =====================================================
-        # REMOVE MOBILE FROM AGE PROOF
-        # =====================================================
+                    .astype(str)
 
-        standardized_df["Type of    Age Proof"] = np.where(
+                    .str.replace(r"\D", "", regex=True)
 
-            standardized_df["Type of    Age Proof"]
+                )
 
-            .astype(str)
+                valid_mask = cleaned.str.len() == 10
 
-            ==
+                if valid_mask.any():
 
-            standardized_df["Mobile No"]
+                    standardized_df["Type of    Age Proof"] = cleaned
+                    break
 
-            .astype(str),
+            # =====================================================
+            # REMOVE MOBILE FROM AGE PROOF
+            # =====================================================
 
-            np.nan,
+            standardized_df["Type of    Age Proof"] = np.where(
 
-            standardized_df["Type of    Age Proof"]
+                standardized_df["Type of    Age Proof"]
 
-        )
+                .astype(str)
 
-        # =====================================================
-        # PREMIUM CALCULATIONS
-        # =====================================================
+                ==
 
-        standardized_df["Rate"] = RATE_PER_LAKH
+                standardized_df["Mobile No"]
 
-        standardized_df["Premium (Excl. GST)"] = (
+                .astype(str),
 
-            standardized_df["Final SA"]
+                np.nan,
 
-            / 100000
+                standardized_df["Type of    Age Proof"]
 
-        ) * RATE_PER_LAKH
+            )
 
-        standardized_df["GST amount"] = (
+            # =====================================================
+            # PREMIUM CALCULATIONS
+            # =====================================================
 
-            standardized_df["Premium (Excl. GST)"]
+            standardized_df["Rate"] = RATE_PER_LAKH
 
-            * GST_RATE
+            standardized_df["Premium (Excl. GST)"] = (
 
-        )
+                standardized_df["Final SA"]
 
-        standardized_df["Total Premium (incl GST)"] = (
+                / 100000
 
-            standardized_df["Premium (Excl. GST)"]
+            ) * RATE_PER_LAKH
 
-            +
+            standardized_df["GST amount"] = (
 
-            standardized_df["GST amount"]
+                standardized_df["Premium (Excl. GST)"]
 
-        )
+                * GST_RATE
 
-        standardized_df["Premium Excl. Gst"] = (
+            )
 
-            standardized_df["Premium (Excl. GST)"]
+            standardized_df["Total Premium (incl GST)"] = (
 
-        )
+                standardized_df["Premium (Excl. GST)"]
 
-        standardized_df["GST"] = (
+                +
 
-            standardized_df["GST amount"]
+                standardized_df["GST amount"]
 
-        )
+            )
 
-        standardized_df["Total Premium"] = (
+            standardized_df["Premium Excl. Gst"] = (
 
-            standardized_df["Total Premium (incl GST)"]
+                standardized_df["Premium (Excl. GST)"]
 
-        )
+            )
 
-        # =====================================================
-        # SERIAL NUMBER
-        # =====================================================
+            standardized_df["GST"] = (
 
-        standardized_df["Sr. no."] = range(
+                standardized_df["GST amount"]
 
-            1,
+            )
 
-            len(standardized_df) + 1
+            standardized_df["Total Premium"] = (
 
-        )
+                standardized_df["Total Premium (incl GST)"]
 
-        # =====================================================
-        # FINAL FORMAT
-        # =====================================================
+            )
 
-        standardized_df = standardized_df[MASTER_COLUMNS]
+            # =====================================================
+            # SERIAL NUMBER
+            # =====================================================
 
-        # =====================================================
-        # APPEND
-        # =====================================================
+            standardized_df["Sr. no."] = range(
 
-        final_master_df = pd.concat(
+                1,
 
-            [final_master_df, standardized_df],
+                len(standardized_df) + 1
 
-            ignore_index=True
+            )
 
-        )
+            # =====================================================
+            # FINAL FORMAT
+            # =====================================================
+
+            standardized_df = standardized_df[MASTER_COLUMNS]
+
+            # =====================================================
+            # APPEND
+            # =====================================================
+
+            final_master_df = pd.concat(
+
+                [final_master_df, standardized_df],
+
+                ignore_index=True
+
+            )
+
+        except Exception as e:
+
+            st.error(
+                f"Error processing {file.name}: {str(e)}"
+            )
 
     # =====================================================
-    # OUTPUT
+    # FINAL CLEANING
     # =====================================================
+
+    final_master_df = final_master_df.replace(
+
+        [np.inf, -np.inf],
+
+        np.nan
+
+    )
+
+    final_master_df = final_master_df.fillna("")
+
+    # =====================================================
+    # DISPLAY SAFE DF
+    # =====================================================
+
+    display_df = final_master_df.astype(str)
 
     st.markdown("---")
 
     st.subheader("📋 Final Output")
 
     st.dataframe(
-        final_master_df,
-        use_container_width=True
+        display_df,
+        width="stretch"
     )
 
     # =====================================================
