@@ -632,48 +632,82 @@ if uploaded_files:
             )
 
             # =====================================================
-            # LOAN START DATE ONLY IF EXISTS
+            # ORIGINAL RAW DATES
             # =====================================================
 
-            if (
+            raw_start = standardized_df[
+                "Loan Disbursement Date (DDMMYYYY)"
+            ]
 
-                standardized_df[
-                    "Loan Disbursement Date (DDMMYYYY)"
-                ]
+            raw_end = standardized_df[
+                "Loan End date (DDMMYYYY)"
+            ]
 
-                .notna()
+            raw_dob = standardized_df[
+                "Date of Birth (DDMMMYYYY)"
+            ]
 
-                .any()
+            # =====================================================
+            # CLEAN DATES
+            # =====================================================
 
-            ):
+            clean_start = clean_date(raw_start)
 
-                standardized_df["Loan Disbursement Date (DDMMYYYY)"] = clean_date(
+            clean_end = clean_date(raw_end)
 
-                    standardized_df["Loan Disbursement Date (DDMMYYYY)"]
+            clean_dob = clean_date(raw_dob)
+
+            # =====================================================
+            # KEEP START DATE ONLY IF VALID
+            # =====================================================
+
+            standardized_df["Loan Disbursement Date (DDMMYYYY)"] = np.where(
+
+                (
+
+                    raw_start.notna()
 
                 )
 
+                &
+
+                (
+
+                    clean_start != clean_dob
+
+                ),
+
+                clean_start,
+
+                np.nan
+
+            )
+
             # =====================================================
-            # LOAN END DATE ONLY IF EXISTS
+            # KEEP END DATE ONLY IF VALID
             # =====================================================
 
-            if (
+            standardized_df["Loan End date (DDMMYYYY)"] = np.where(
 
-                standardized_df[
-                    "Loan End date (DDMMYYYY)"
-                ]
+                (
 
-                .notna()
-
-                .any()
-
-            ):
-
-                standardized_df["Loan End date (DDMMYYYY)"] = clean_date(
-
-                    standardized_df["Loan End date (DDMMYYYY)"]
+                    raw_end.notna()
 
                 )
+
+                &
+
+                (
+
+                    clean_end != clean_dob
+
+                ),
+
+                clean_end,
+
+                np.nan
+
+            )
 
             # =====================================================
             # CLEAN MOBILE
@@ -702,7 +736,7 @@ if uploaded_files:
             )
 
             # =====================================================
-            # CALCULATE LOAN TERM
+            # CALCULATE LOAN TERM ONLY IF VALID
             # =====================================================
 
             start_date = pd.to_datetime(
@@ -711,7 +745,7 @@ if uploaded_files:
                     "Loan Disbursement Date (DDMMYYYY)"
                 ],
 
-                errors='coerce'
+                errors="coerce"
 
             )
 
@@ -721,7 +755,7 @@ if uploaded_files:
                     "Loan End date (DDMMYYYY)"
                 ],
 
-                errors='coerce'
+                errors="coerce"
 
             )
 
