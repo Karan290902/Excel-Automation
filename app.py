@@ -1,22 +1,25 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import json
+import os
 from io import BytesIO
+from rapidfuzz import fuzz
 
 # =====================================================
 # PAGE CONFIG
 # =====================================================
 
 st.set_page_config(
-    page_title="Insurance Data Mapper",
+    page_title="AI Insurance Mapper",
     page_icon="📊",
     layout="wide"
 )
 
-st.title("📊 Insurance Data Standardization Engine")
+st.title("📊 AI Insurance Data Standardization Engine")
 
 st.write(
-    "Upload any insurance excel file and map fields dynamically."
+    "Upload any insurance excel file and auto-convert into insurer-ready format."
 )
 
 # =====================================================
@@ -25,9 +28,38 @@ st.write(
 
 RATE_PER_LAKH = 320.3
 GST_RATE = 0.18
+MAPPING_FILE = "mapping_memory.json"
 
 # =====================================================
-# FINAL OUTPUT FORMAT
+# LOAD MAPPING MEMORY
+# =====================================================
+
+if os.path.exists(MAPPING_FILE):
+
+    with open(MAPPING_FILE, "r") as f:
+
+        SAVED_MAPPINGS = json.load(f)
+
+else:
+
+    SAVED_MAPPINGS = {}
+
+# =====================================================
+# SAVE MAPPING MEMORY
+# =====================================================
+
+def save_mapping_memory():
+
+    with open(MAPPING_FILE, "w") as f:
+
+        json.dump(
+            SAVED_MAPPINGS,
+            f,
+            indent=4
+        )
+
+# =====================================================
+# OUTPUT FORMAT
 # =====================================================
 
 MASTER_COLUMNS = [
@@ -85,6 +117,130 @@ MASTER_COLUMNS = [
 ]
 
 # =====================================================
+# ALIASES
+# =====================================================
+
+ALIASES = {
+
+    "Loan Account No.": [
+        "a/c number",
+        "account number",
+        "account no",
+        "loan account",
+        "membership no",
+        "loan no",
+        "lan"
+    ],
+
+    "Name of Primary Loan borrower": [
+        "member name",
+        "customer name",
+        "borrower name",
+        "insured name",
+        "name"
+    ],
+
+    "Gender": [
+        "gender",
+        "sex"
+    ],
+
+    "Date of Birth (DDMMMYYYY)": [
+        "dob",
+        "date of birth"
+    ],
+
+    "MAIN MEMBER AGE": [
+        "age"
+    ],
+
+    "Mobile No": [
+        "mobile",
+        "mobile number",
+        "phone"
+    ],
+
+    "Pincode": [
+        "pin code",
+        "pincode"
+    ],
+
+    "Loan Outstanding Amount": [
+        "loan amount",
+        "loan outstanding"
+    ],
+
+    "Sum Assured": [
+        "sum assured",
+        "sum insured",
+        "coverage",
+        "gtl"
+    ],
+
+    "Nominee Name": [
+        "nominee name",
+        "nominee"
+    ],
+
+    "Relationship of the Nominee with Insurance covered Person": [
+        "nominee relationship",
+        "relation"
+    ],
+
+    "Nominee Age": [
+        "nominee age"
+    ],
+
+    "Loan Disbursement Date (DDMMYYYY)": [
+        "loan start date",
+        "disbursement"
+    ],
+
+    "Loan End date (DDMMYYYY)": [
+        "loan end date",
+        "loan end"
+    ]
+
+}
+
+# =====================================================
+# SMART MATCHING
+# =====================================================
+
+def detect_column(columns, aliases):
+
+    best_match = None
+    best_score = 0
+
+    for col in columns:
+
+        clean_col = str(col).lower().strip()
+
+        # CHECK SAVED MEMORY
+
+        if clean_col in SAVED_MAPPINGS:
+
+            return SAVED_MAPPINGS[clean_col]
+
+        for alias in aliases:
+
+            score = fuzz.token_sort_ratio(
+                clean_col,
+                alias
+            )
+
+            if score > best_score:
+
+                best_score = score
+                best_match = col
+
+    if best_score >= 75:
+
+        return best_match
+
+    return None
+
+# =====================================================
 # CLEAN FUNCTIONS
 # =====================================================
 
@@ -98,14 +254,12 @@ def clean_money(series):
 
         .str.replace("₹", "", regex=False)
 
-        .str.replace("/-", "", regex=False)
-
         .str.strip()
 
     )
 
     cleaned = cleaned.replace(
-        ["", "nan", "None"],
+        ["", "nan"],
         np.nan
     )
 
@@ -162,12 +316,10 @@ def clean_date(series):
 def remove_total_rows(df):
 
     keywords = [
-
         "total",
         "grand total",
         "subtotal",
         "summary"
-
     ]
 
     mask = pd.Series(
@@ -185,11 +337,8 @@ def remove_total_rows(df):
             .str.lower()
 
             .str.contains(
-
                 "|".join(keywords),
-
                 na=False
-
             )
 
         )
@@ -197,7 +346,7 @@ def remove_total_rows(df):
     return df[~mask]
 
 # =====================================================
-# UPLOAD FILES
+# FILE UPLOAD
 # =====================================================
 
 uploaded_files = st.file_uploader(
@@ -222,7 +371,7 @@ if uploaded_files:
 
         st.markdown("---")
 
-        st.subheader(f"📄 Processing File: {file.name}")
+        st.subheader(f"📄 {file.name}")
 
         # =====================================================
         # READ RAW FILE
@@ -232,10 +381,6 @@ if uploaded_files:
             file,
             header=None
         )
-
-        # =====================================================
-        # FIND HEADER ROW
-        # =====================================================
 
         header_row = 0
 
@@ -275,16 +420,9 @@ if uploaded_files:
         # =====================================================
 
         df = pd.read_excel(
-
             file,
-
             header=header_row
-
         )
-
-        # =====================================================
-        # CLEAN DATAFRAME
-        # =====================================================
 
         df.dropna(
             how="all",
@@ -300,7 +438,7 @@ if uploaded_files:
         df = remove_total_rows(df)
 
         # =====================================================
-        # CLEAN COLUMN NAMES
+        # CLEAN COLUMNS
         # =====================================================
 
         df.columns = [
@@ -318,18 +456,7 @@ if uploaded_files:
         ]
 
         # =====================================================
-        # PREVIEW INPUT
-        # =====================================================
-
-        st.write("### Input Data Preview")
-
-        st.dataframe(
-            df.head(),
-            use_container_width=True
-        )
-
-        # =====================================================
-        # CREATE OUTPUT DF
+        # OUTPUT DF
         # =====================================================
 
         standardized_df = pd.DataFrame()
@@ -339,102 +466,52 @@ if uploaded_files:
             standardized_df[col] = np.nan
 
         # =====================================================
-        # DYNAMIC FIELD MAPPING
+        # AUTO MAPPING
         # =====================================================
 
-        st.write("## 🛠 Dynamic Field Mapping")
+        st.write("### 🤖 AI Auto Mapping")
 
-        all_columns = list(df.columns)
+        for output_col, aliases in ALIASES.items():
 
-        mapping_config = {}
-
-        important_fields = [
-
-            "Loan Account No.",
-            "Name of Primary Loan borrower",
-            "Gender",
-            "Date of Birth (DDMMMYYYY)",
-            "MAIN MEMBER AGE",
-            "Mobile No",
-            "Pincode",
-            "Branch Name",
-            "Zone",
-            "Loan Type",
-            "Loan Outstanding Amount",
-            "Sum Assured",
-            "Nominee Name",
-            "Relationship of the Nominee with Insurance covered Person",
-            "Nominee Age",
-            "Loan Disbursement Date (DDMMYYYY)",
-            "Loan End date (DDMMYYYY)",
-            "Address            (First Life)",
-            "Address 1            (First Life)",
-            "Address 2            (First Life)",
-            "Email Id"
-
-        ]
-
-        for output_field in important_fields:
-
-            selected_columns = st.multiselect(
-
-                f"Select input field(s) for ➜ {output_field}",
-
-                options=all_columns,
-
-                default=[],
-
-                key=f"{file.name}_{output_field}"
-
+            detected_col = detect_column(
+                df.columns,
+                aliases
             )
 
-            mapping_config[output_field] = selected_columns
+            # LOW CONFIDENCE USER CONFIRMATION
 
-        # =====================================================
-        # APPLY USER MAPPING
-        # =====================================================
+            if detected_col is None:
 
-        for output_field, selected_columns in mapping_config.items():
+                selected = st.selectbox(
 
-            if len(selected_columns) == 1:
+                    f"Select column for ➜ {output_col}",
 
-                standardized_df[output_field] = df[
-                    selected_columns[0]
-                ]
+                    [""] + list(df.columns),
 
-            elif len(selected_columns) > 1:
-
-                merged_data = df[
-                    selected_columns
-                ].astype(str)
-
-                merged_data = merged_data.replace(
-                    "nan",
-                    ""
-                )
-
-                standardized_df[output_field] = merged_data.apply(
-
-                    lambda row: " ".join(
-
-                        [
-
-                            str(x).strip()
-
-                            for x in row
-
-                            if str(x).strip() != ""
-
-                        ]
-
-                    ),
-
-                    axis=1
+                    key=f"{file.name}_{output_col}"
 
                 )
 
+                if selected != "":
+
+                    detected_col = selected
+
+            if detected_col is not None:
+
+                standardized_df[output_col] = df[detected_col]
+
+                # SAVE MEMORY
+
+                SAVED_MAPPINGS[
+                    str(detected_col).lower()
+                ] = output_col
+
+        # SAVE MEMORY FILE
+
+        save_mapping_memory()
+
         # =====================================================
-        # CLEAN IMPORTANT FIELDS
+        # CLEAN MONEY
         # =====================================================
 
         standardized_df["Loan Outstanding Amount"] = clean_money(
@@ -463,11 +540,7 @@ if uploaded_files:
 
         )
 
-        standardized_df["Sum Assured"] = (
-
-            standardized_df["Final SA"]
-
-        )
+        standardized_df["Sum Assured"] = standardized_df["Final SA"]
 
         # =====================================================
         # CLEAN DOB
@@ -480,7 +553,7 @@ if uploaded_files:
         )
 
         # =====================================================
-        # CLEAN LOAN DATES
+        # VALIDATE LOAN DATES
         # =====================================================
 
         raw_start = standardized_df[
@@ -496,25 +569,19 @@ if uploaded_files:
         ]
 
         clean_start = clean_date(raw_start)
-
         clean_end = clean_date(raw_end)
-
         clean_dob = clean_date(raw_dob)
 
         standardized_df["Loan Disbursement Date (DDMMYYYY)"] = np.where(
 
             (
-
                 raw_start.notna()
-
             )
 
             &
 
             (
-
                 clean_start != clean_dob
-
             ),
 
             clean_start,
@@ -526,17 +593,13 @@ if uploaded_files:
         standardized_df["Loan End date (DDMMYYYY)"] = np.where(
 
             (
-
                 raw_end.notna()
-
             )
 
             &
 
             (
-
                 clean_end != clean_dob
-
             ),
 
             clean_end,
@@ -546,7 +609,7 @@ if uploaded_files:
         )
 
         # =====================================================
-        # CLEAN MOBILE
+        # CLEAN OTHER FIELDS
         # =====================================================
 
         standardized_df["Mobile No"] = clean_mobile(
@@ -554,10 +617,6 @@ if uploaded_files:
             standardized_df["Mobile No"]
 
         )
-
-        # =====================================================
-        # CLEAN AGE
-        # =====================================================
 
         standardized_df["MAIN MEMBER AGE"] = clean_age(
 
@@ -572,7 +631,7 @@ if uploaded_files:
         )
 
         # =====================================================
-        # CALCULATE LOAN TERM
+        # LOAN TERM
         # =====================================================
 
         start_date = pd.to_datetime(
@@ -596,13 +655,9 @@ if uploaded_files:
         )
 
         valid_dates = (
-
             start_date.notna()
-
             &
-
             end_date.notna()
-
         )
 
         months = np.where(
@@ -610,13 +665,9 @@ if uploaded_files:
             valid_dates,
 
             (
-
                 (end_date.dt.year - start_date.dt.year) * 12
-
                 +
-
                 (end_date.dt.month - start_date.dt.month)
-
             ),
 
             np.nan
@@ -626,11 +677,7 @@ if uploaded_files:
         standardized_df["Loan Term (in months)"] = months
 
         standardized_df["Loan Term (Year)"] = (
-
-            standardized_df[
-                "Loan Term (in months)"
-            ] / 12
-
+            standardized_df["Loan Term (in months)"] / 12
         ).round(1)
 
         # =====================================================
@@ -638,11 +685,8 @@ if uploaded_files:
         # =====================================================
 
         standardized_df["Sr. no."] = range(
-
             1,
-
             len(standardized_df) + 1
-
         )
 
         # =====================================================
@@ -664,11 +708,7 @@ if uploaded_files:
             standardized_df["Final SA"].notna(),
 
             (
-
-                standardized_df["Final SA"]
-
-                / 100000
-
+                standardized_df["Final SA"] / 100000
             ) * RATE_PER_LAKH,
 
             np.nan
@@ -679,9 +719,7 @@ if uploaded_files:
 
             standardized_df["Premium (Excl. GST)"].notna(),
 
-            standardized_df["Premium (Excl. GST)"]
-
-            * GST_RATE,
+            standardized_df["Premium (Excl. GST)"] * GST_RATE,
 
             np.nan
 
@@ -692,9 +730,7 @@ if uploaded_files:
             standardized_df["Premium (Excl. GST)"].notna(),
 
             standardized_df["Premium (Excl. GST)"]
-
             +
-
             standardized_df["GST amount"],
 
             np.nan
@@ -702,32 +738,22 @@ if uploaded_files:
         )
 
         # =====================================================
-        # DUPLICATE AVIVA FIELDS
+        # DUPLICATE FIELDS
         # =====================================================
 
-        standardized_df["Aviva Calculation SA"] = (
+        standardized_df["Aviva Calculation SA"] = standardized_df["Final SA"]
 
-            standardized_df["Final SA"]
+        standardized_df["Premium Excl. Gst"] = standardized_df[
+            "Premium (Excl. GST)"
+        ]
 
-        )
+        standardized_df["GST"] = standardized_df[
+            "GST amount"
+        ]
 
-        standardized_df["Premium Excl. Gst"] = (
-
-            standardized_df["Premium (Excl. GST)"]
-
-        )
-
-        standardized_df["GST"] = (
-
-            standardized_df["GST amount"]
-
-        )
-
-        standardized_df["Total Premium"] = (
-
-            standardized_df["Total Premium (incl GST)"]
-
-        )
+        standardized_df["Total Premium"] = standardized_df[
+            "Total Premium (incl GST)"
+        ]
 
         # =====================================================
         # FINAL FORMAT
