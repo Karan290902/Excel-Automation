@@ -439,7 +439,7 @@ if uploaded_files:
                 standardized_df[col] = np.nan
 
             # =====================================================
-            # MAPPING UI
+            # SIMPLE MAPPING UI
             # =====================================================
 
             st.markdown("### 🎯 Verify Important Field Mapping")
@@ -510,6 +510,59 @@ if uploaded_files:
 
                 if selected_col != "":
                     standardized_df[output_col] = df[selected_col]
+
+            # =====================================================
+            # COMPULSORY OUTPUT FIELDS
+            # =====================================================
+
+            compulsory_fields = [
+
+                "Loan Type",
+                "Loan Account No.",
+                "Name of Primary Loan borrower",
+                "Gender",
+                "Date of Birth (DDMMMYYYY)",
+                "Type of    Age Proof",
+                "Address            (First Life)",
+                "Address 1            (First Life)",
+                "Address 2            (First Life)",
+                "Pincode",
+                "Mobile No",
+                "Email Id",
+                "Nominee Name",
+                "Relationship of the Nominee with Insurance covered Person",
+                "Nominee Age",
+                "Loan Outstanding Amount",
+                "Sum Assured",
+                "Loan Disbursement Date (DDMMYYYY)",
+                "Loan End date (DDMMYYYY)",
+                "Loan Term (in months)",
+                "Loan Term (Year)",
+                "MAIN MEMBER AGE",
+                "Aviva Calculation SA",
+                "Premium Excl. Gst",
+                "GST",
+                "Total Premium"
+
+            ]
+
+            for field in compulsory_fields:
+
+                if field in standardized_df.columns:
+
+                    if standardized_df[field].isna().all():
+
+                        detected_col = detect_column(
+                            df.columns,
+                            ALIASES.get(field, [])
+                        )
+
+                        if (
+                            detected_col is not None
+                            and detected_col in df.columns
+                        ):
+
+                            standardized_df[field] = df[detected_col]
 
             # =====================================================
             # LOAN TYPE
@@ -584,38 +637,6 @@ if uploaded_files:
             )
 
             # =====================================================
-            # REMOVE DOB FROM LOAN DATES
-            # =====================================================
-
-            standardized_df["Loan Disbursement Date (DDMMYYYY)"] = np.where(
-
-                standardized_df["Loan Disbursement Date (DDMMYYYY)"]
-
-                ==
-
-                standardized_df["Date of Birth (DDMMMYYYY)"],
-
-                np.nan,
-
-                standardized_df["Loan Disbursement Date (DDMMYYYY)"]
-
-            )
-
-            standardized_df["Loan End date (DDMMYYYY)"] = np.where(
-
-                standardized_df["Loan End date (DDMMYYYY)"]
-
-                ==
-
-                standardized_df["Date of Birth (DDMMMYYYY)"],
-
-                np.nan,
-
-                standardized_df["Loan End date (DDMMYYYY)"]
-
-            )
-
-            # =====================================================
             # SUM ASSURED LOGIC
             # =====================================================
 
@@ -664,30 +685,6 @@ if uploaded_files:
             standardized_df["Loan Term (Year)"] = (
                 standardized_df["Loan Term (in months)"] / 12
             ).round(1)
-
-            # =====================================================
-            # REMOVE SAME NOMINEE NAME
-            # =====================================================
-
-            standardized_df["Nominee Name"] = np.where(
-
-                standardized_df["Nominee Name"]
-                .astype(str)
-                .str.lower()
-
-                ==
-
-                standardized_df[
-                    "Name of Primary Loan borrower"
-                ]
-                .astype(str)
-                .str.lower(),
-
-                np.nan,
-
-                standardized_df["Nominee Name"]
-
-            )
 
             # =====================================================
             # AGE PROOF
