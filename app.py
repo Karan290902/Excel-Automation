@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 from io import BytesIO
 
 # =====================================================
@@ -173,12 +172,24 @@ ALIASES = {
     "Sum Assured": [
 
         "sum assured",
+
         "sum insured",
-        "coverage",
+
         "insured amount",
+
+        "coverage",
+
+        "coverage amount",
+
         "calculation sa",
+
         "aviva calculation sa",
-        "sa"
+
+        "sa",
+
+        "sum insured : 10 lakhs each for gtl",
+
+        "gtl"
 
     ],
 
@@ -218,20 +229,26 @@ ALIASES = {
 }
 
 # =====================================================
-# COLUMN DETECTION FUNCTION
+# SMART COLUMN DETECTION
 # =====================================================
 
 def detect_column(columns, aliases):
 
-    for col in columns:
+    for alias in aliases:
 
-        cleaned_col = str(col).lower().strip()
+        for col in columns:
 
-        cleaned_col = cleaned_col.replace("_", " ")
+            cleaned_col = str(col).lower().strip()
 
-        for alias in aliases:
+            # EXACT MATCH
 
-            if alias in cleaned_col:
+            if cleaned_col == alias:
+
+                return col
+
+            # PARTIAL MATCH
+
+            elif alias in cleaned_col:
 
                 return col
 
@@ -266,25 +283,55 @@ if uploaded_files:
         try:
 
             # =====================================================
-            # READ FILE
+            # SMART EXCEL READING
             # =====================================================
 
-            df = pd.read_excel(file)
+            df = pd.read_excel(
 
-            df = df.copy()
+                file,
 
-            # REMOVE EMPTY ROWS
+                header=0
+
+            )
+
+            # REMOVE FULLY EMPTY ROWS
 
             df.dropna(
                 how='all',
                 inplace=True
             )
 
+            # REMOVE FULLY EMPTY COLUMNS
+
+            df.dropna(
+                axis=1,
+                how='all',
+                inplace=True
+            )
+
             # CLEAN COLUMN NAMES
 
-            df.columns = df.columns.astype(str)
+            df.columns = [
 
-            df.columns = df.columns.str.strip()
+                str(col)
+                .replace('\n', ' ')
+                .replace('_', ' ')
+                .strip()
+                .lower()
+
+                for col in df.columns
+
+            ]
+
+            # =====================================================
+            # DEBUG VIEW
+            # =====================================================
+
+            with st.expander(f"🧠 Mapping - {file.name}"):
+
+                st.write("Detected Columns:")
+
+                st.write(df.columns.tolist())
 
             # =====================================================
             # CREATE STANDARDIZED DATAFRAME
@@ -323,12 +370,22 @@ if uploaded_files:
                     ] = detected_col
 
             # =====================================================
-            # SHOW DETECTED MAPPING
+            # SHOW MAPPING
             # =====================================================
 
-            with st.expander(f"🧠 Mapping - {file.name}"):
+            with st.expander(f"📌 Auto Mapping - {file.name}"):
 
                 st.write(detected_mapping)
+
+            # =====================================================
+            # VALIDATE SA
+            # =====================================================
+
+            if standardized_df["Sum Assured"].isna().all():
+
+                st.error(
+                    f"❌ Sum Assured not detected in {file.name}"
+                )
 
             # =====================================================
             # CLEAN SUM ASSURED
@@ -397,7 +454,7 @@ if uploaded_files:
             ) * RATE_PER_LAKH
 
             # =====================================================
-            # GST
+            # GST CALCULATION
             # =====================================================
 
             standardized_df["GST amount"] = (
@@ -449,12 +506,19 @@ if uploaded_files:
             )
 
             # =====================================================
-            # REMARKS
+            # DEFAULT VALUES
             # =====================================================
 
             standardized_df["Aviva Remarks"] = (
 
                 "Processed Successfully"
+
+            )
+
+            standardized_df["Zone"] = (
+
+                standardized_df["Zone"]
+                .replace("NA", "Default Zone")
 
             )
 
@@ -534,14 +598,17 @@ if uploaded_files:
         )
 
     # =====================================================
-    # OUTPUT TABLE
+    # FINAL OUTPUT
     # =====================================================
 
     st.subheader("📋 Final Standardized Output")
 
     st.dataframe(
+
         final_master_df,
+
         use_container_width=True
+
     )
 
     # =====================================================
