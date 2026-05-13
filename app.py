@@ -20,7 +20,7 @@ st.set_page_config(
 st.title("📊 Insurance Data Standardization Engine")
 
 st.write(
-    "Upload multiple insurance Excel files with different formats and generate one fixed insurer-ready output file."
+    "Upload any insurance Excel file and automatically generate a fixed insurer-ready output format."
 )
 
 # =====================================================
@@ -180,7 +180,6 @@ ALIASES = {
         "calculation sa",
         "aviva calculation sa",
         "sa",
-        "sum insured : 10 lakhs each for gtl",
         "gtl"
 
     ],
@@ -243,6 +242,56 @@ def detect_column(columns, aliases):
     return None
 
 # =====================================================
+# REMOVE TOTAL ROWS / EMPTY ROWS
+# =====================================================
+
+def clean_dataframe(df):
+
+    # REMOVE FULLY EMPTY ROWS
+
+    df.dropna(
+        how='all',
+        inplace=True
+    )
+
+    # REMOVE FULLY EMPTY COLUMNS
+
+    df.dropna(
+        axis=1,
+        how='all',
+        inplace=True
+    )
+
+    # REMOVE TOTAL ROWS
+
+    total_keywords = [
+
+        "total",
+        "grand total",
+        "subtotal",
+        "summary"
+
+    ]
+
+    mask = pd.Series(
+        [False] * len(df)
+    )
+
+    for col in df.columns:
+
+        mask = mask | df[col].astype(str).str.lower().str.contains(
+
+            "|".join(total_keywords),
+
+            na=False
+
+        )
+
+    df = df[~mask]
+
+    return df
+
+# =====================================================
 # FILE UPLOAD
 # =====================================================
 
@@ -271,7 +320,7 @@ if uploaded_files:
         try:
 
             # =====================================================
-            # SMART EXCEL READING
+            # READ EXCEL
             # =====================================================
 
             df = pd.read_excel(
@@ -282,28 +331,21 @@ if uploaded_files:
 
             )
 
-            # REMOVE EMPTY ROWS
+            # =====================================================
+            # CLEAN DATAFRAME
+            # =====================================================
 
-            df.dropna(
-                how='all',
-                inplace=True
-            )
+            df = clean_dataframe(df)
 
-            # REMOVE EMPTY COLUMNS
-
-            df.dropna(
-                axis=1,
-                how='all',
-                inplace=True
-            )
-
+            # =====================================================
             # CLEAN COLUMN NAMES
+            # =====================================================
 
             df.columns = [
 
                 str(col)
-                .replace('\n', ' ')
-                .replace('_', ' ')
+                .replace("\n", " ")
+                .replace("_", " ")
                 .strip()
                 .lower()
 
@@ -316,8 +358,6 @@ if uploaded_files:
             # =====================================================
 
             with st.expander(f"🧠 Mapping - {file.name}"):
-
-                st.write("Detected Columns:")
 
                 st.write(df.columns.tolist())
 
@@ -332,7 +372,7 @@ if uploaded_files:
                 standardized_df[col] = "NA"
 
             # =====================================================
-            # AUTO COLUMN MAPPING
+            # AUTO MAPPING
             # =====================================================
 
             detected_mapping = {}
@@ -366,7 +406,7 @@ if uploaded_files:
                 st.write(detected_mapping)
 
             # =====================================================
-            # CLEAN SUM ASSURED
+            # CLEAN SA
             # =====================================================
 
             standardized_df["Sum Assured"] = (
@@ -460,6 +500,26 @@ if uploaded_files:
             ]
 
             # =====================================================
+            # KEEP ONLY REAL RECORDS
+            # =====================================================
+
+            standardized_df = standardized_df[
+
+                standardized_df[
+                    "Name of Primary Loan borrower"
+                ].astype(str).str.strip().ne("")
+
+            ]
+
+            standardized_df = standardized_df[
+
+                standardized_df[
+                    "Name of Primary Loan borrower"
+                ].astype(str).str.lower() != "na"
+
+            ]
+
+            # =====================================================
             # SERIAL NUMBER
             # =====================================================
 
@@ -490,7 +550,7 @@ if uploaded_files:
             ) * RATE_PER_LAKH
 
             # =====================================================
-            # GST CALCULATION
+            # GST
             # =====================================================
 
             standardized_df["GST amount"] = (
@@ -542,7 +602,7 @@ if uploaded_files:
             )
 
             # =====================================================
-            # DEFAULT VALUES
+            # DEFAULT REMARKS
             # =====================================================
 
             standardized_df["Aviva Remarks"] = (
@@ -552,7 +612,13 @@ if uploaded_files:
             )
 
             # =====================================================
-            # APPEND FINAL DATA
+            # FINAL COLUMN ORDER
+            # =====================================================
+
+            standardized_df = standardized_df[MASTER_COLUMNS]
+
+            # =====================================================
+            # APPEND DATA
             # =====================================================
 
             final_master_df = pd.concat(
@@ -581,7 +647,7 @@ if uploaded_files:
 
     total_members = len(final_master_df)
 
-    total_sa = final_master_df["Final SA"].sum()
+    total_sa = final_master_df["Sum Assured"].sum()
 
     total_premium = final_master_df["Premium (Excl. GST)"].sum()
 
