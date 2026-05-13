@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 from io import BytesIO
 
 # =====================================================
@@ -172,23 +173,14 @@ ALIASES = {
     "Sum Assured": [
 
         "sum assured",
-
         "sum insured",
-
         "insured amount",
-
         "coverage",
-
         "coverage amount",
-
         "calculation sa",
-
         "aviva calculation sa",
-
         "sa",
-
         "sum insured : 10 lakhs each for gtl",
-
         "gtl"
 
     ],
@@ -240,13 +232,9 @@ def detect_column(columns, aliases):
 
             cleaned_col = str(col).lower().strip()
 
-            # EXACT MATCH
-
             if cleaned_col == alias:
 
                 return col
-
-            # PARTIAL MATCH
 
             elif alias in cleaned_col:
 
@@ -294,14 +282,14 @@ if uploaded_files:
 
             )
 
-            # REMOVE FULLY EMPTY ROWS
+            # REMOVE EMPTY ROWS
 
             df.dropna(
                 how='all',
                 inplace=True
             )
 
-            # REMOVE FULLY EMPTY COLUMNS
+            # REMOVE EMPTY COLUMNS
 
             df.dropna(
                 axis=1,
@@ -378,16 +366,6 @@ if uploaded_files:
                 st.write(detected_mapping)
 
             # =====================================================
-            # VALIDATE SA
-            # =====================================================
-
-            if standardized_df["Sum Assured"].isna().all():
-
-                st.error(
-                    f"❌ Sum Assured not detected in {file.name}"
-                )
-
-            # =====================================================
             # CLEAN SUM ASSURED
             # =====================================================
 
@@ -411,7 +389,65 @@ if uploaded_files:
 
                 errors="coerce"
 
-            ).fillna(0)
+            )
+
+            # =====================================================
+            # CLEAN LOAN AMOUNT
+            # =====================================================
+
+            standardized_df["Loan Outstanding Amount"] = (
+
+                standardized_df["Loan Outstanding Amount"]
+
+                .astype(str)
+
+                .str.replace(",", "")
+
+                .str.replace("₹", "")
+
+                .str.strip()
+
+            )
+
+            standardized_df["Loan Outstanding Amount"] = pd.to_numeric(
+
+                standardized_df["Loan Outstanding Amount"],
+
+                errors="coerce"
+
+            )
+
+            # =====================================================
+            # SMART SA LOGIC
+            # =====================================================
+
+            standardized_df["Final SA"] = np.where(
+
+                standardized_df["Sum Assured"].notna()
+
+                &
+
+                (standardized_df["Sum Assured"] > 0),
+
+                standardized_df["Sum Assured"],
+
+                standardized_df["Loan Outstanding Amount"]
+
+            )
+
+            standardized_df["Final SA"] = (
+
+                standardized_df["Final SA"]
+
+                .fillna(0)
+
+            )
+
+            standardized_df["Sum Assured"] = (
+
+                standardized_df["Final SA"]
+
+            )
 
             # =====================================================
             # REMOVE INVALID ROWS
@@ -419,7 +455,7 @@ if uploaded_files:
 
             standardized_df = standardized_df[
 
-                standardized_df["Sum Assured"] > 0
+                standardized_df["Final SA"] > 0
 
             ]
 
@@ -447,7 +483,7 @@ if uploaded_files:
 
             standardized_df["Premium (Excl. GST)"] = (
 
-                standardized_df["Sum Assured"]
+                standardized_df["Final SA"]
 
                 / 100000
 
@@ -483,7 +519,7 @@ if uploaded_files:
 
             standardized_df["Aviva Calculation SA"] = (
 
-                standardized_df["Sum Assured"]
+                standardized_df["Final SA"]
 
             )
 
@@ -512,13 +548,6 @@ if uploaded_files:
             standardized_df["Aviva Remarks"] = (
 
                 "Processed Successfully"
-
-            )
-
-            standardized_df["Zone"] = (
-
-                standardized_df["Zone"]
-                .replace("NA", "Default Zone")
 
             )
 
@@ -552,7 +581,7 @@ if uploaded_files:
 
     total_members = len(final_master_df)
 
-    total_sa = final_master_df["Sum Assured"].sum()
+    total_sa = final_master_df["Final SA"].sum()
 
     total_premium = final_master_df["Premium (Excl. GST)"].sum()
 
