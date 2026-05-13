@@ -7,6 +7,7 @@ import pandas as pd
 import numpy as np
 from io import BytesIO
 from difflib import SequenceMatcher
+import re
 
 # =====================================================
 # PAGE CONFIG
@@ -90,7 +91,7 @@ MASTER_COLUMNS = [
 ]
 
 # =====================================================
-# FIELD RULES
+# ALIASES
 # =====================================================
 
 ALIASES = {
@@ -106,7 +107,9 @@ ALIASES = {
         "account no",
         "membership no",
         "membership number",
-        "member id"
+        "member id",
+        "certificate no",
+        "certificate number"
 
     ],
 
@@ -117,6 +120,7 @@ ALIASES = {
         "borrower name",
         "insured name",
         "client name",
+        "full name",
         "name"
 
     ],
@@ -127,34 +131,50 @@ ALIASES = {
     ],
 
     "Date of Birth (DDMMMYYYY)": [
+
         "dob",
-        "date of birth"
+        "date of birth",
+        "birth date",
+        "d.o.b"
+
     ],
 
     "MAIN MEMBER AGE": [
-        "age"
+        "age",
+        "member age",
+        "insured age"
     ],
 
     "Pincode": [
         "pincode",
-        "pin code"
+        "pin code",
+        "postal code"
     ],
 
     "Mobile No": [
+
         "mobile number",
         "mobile no",
         "mobile",
-        "phone"
+        "mob no",
+        "mob",
+        "phone",
+        "phone no",
+        "contact no"
+
     ],
 
     "Nominee Name": [
-        "nominee name"
+        "nominee name",
+        "nominee"
     ],
 
     "Relationship of the Nominee with Insurance covered Person": [
+
         "nominee relationship",
         "relationship",
         "relation"
+
     ],
 
     "Nominee Age": [
@@ -162,40 +182,57 @@ ALIASES = {
     ],
 
     "Loan Outstanding Amount": [
+
         "loan amount",
-        "outstanding amount"
+        "loan amt",
+        "outstanding amount",
+        "loan outstanding",
+        "disbursed amount"
+
     ],
 
     "Sum Assured": [
+
         "sum assured",
         "sum insured",
-        "sa",
-        "coverage"
+        "coverage",
+        "sa"
+
     ],
 
     "Loan Disbursement Date (DDMMYYYY)": [
+
         "loan start date",
+        "loan disbursement date",
         "disbursement date",
         "loan start"
+
     ],
 
     "Loan End date (DDMMYYYY)": [
+
         "loan end date",
+        "loan expiry date",
         "loan end"
+
     ],
 
     "Address            (First Life)": [
 
         "address",
-        "society name",
-        "residence address",
-        "communication address"
+        "residential address",
+        "communication address",
+        "society name"
 
     ],
 
     "Address 1            (First Life)": [
+
         "district",
-        "place"
+        "place",
+        "city",
+        "location"
+
     ]
 
 }
@@ -221,6 +258,12 @@ def detect_column(columns, aliases):
 
             .replace("-", " ")
 
+            .replace("/", " ")
+
+            .replace(".", " ")
+
+            .replace("\n", " ")
+
             .strip()
 
         )
@@ -233,16 +276,19 @@ def detect_column(columns, aliases):
 
                 score = 100
 
+            elif any(
+                word in clean_col
+                for word in alias_clean.split()
+            ):
+
+                score = 85
+
             else:
 
                 score = SequenceMatcher(
-
                     None,
-
                     clean_col,
-
                     alias_clean
-
                 ).ratio() * 100
 
             if score > best_score:
@@ -250,8 +296,7 @@ def detect_column(columns, aliases):
                 best_score = score
                 best_match = col
 
-    if best_score >= 55:
-
+    if best_score >= 40:
         return best_match
 
     return None
@@ -269,6 +314,8 @@ def clean_money(series):
         .str.replace(",", "", regex=False)
 
         .str.replace("₹", "", regex=False)
+
+        .str.replace("/-", "", regex=False)
 
         .str.strip()
 
@@ -384,13 +431,9 @@ def remove_total_rows(df):
 # =====================================================
 
 uploaded_files = st.file_uploader(
-
     "📂 Upload Excel Files",
-
-    type=["xlsx"],
-
+    type=["xlsx", "xls"],
     accept_multiple_files=True
-
 )
 
 # =====================================================
@@ -402,17 +445,13 @@ if uploaded_files:
     final_master_df = pd.DataFrame()
 
     loan_type = st.selectbox(
-
         "Select Loan Type",
-
         ["GTL", "PA", "GCL"]
-
     )
 
     for file in uploaded_files:
 
         st.markdown("---")
-
         st.subheader(f"📄 {file.name}")
 
         try:
@@ -428,7 +467,7 @@ if uploaded_files:
 
             header_row = 0
 
-            for i in range(min(10, len(raw_df))):
+            for i in range(min(15, len(raw_df))):
 
                 row_text = " ".join(
 
@@ -443,24 +482,17 @@ if uploaded_files:
                 ).lower()
 
                 if (
-
                     "member" in row_text
-
-                    or
-
-                    "name" in row_text
-
-                    or
-
-                    "account" in row_text
-
+                    or "name" in row_text
+                    or "account" in row_text
+                    or "loan" in row_text
                 ):
 
                     header_row = i
                     break
 
             # =====================================================
-            # READ FILE AGAIN
+            # READ ACTUAL FILE
             # =====================================================
 
             df = pd.read_excel(
@@ -482,7 +514,7 @@ if uploaded_files:
             df = remove_total_rows(df)
 
             # =====================================================
-            # CLEAN COLUMN NAMES
+            # CLEAN COLUMNS
             # =====================================================
 
             df.columns = [
@@ -500,17 +532,16 @@ if uploaded_files:
             ]
 
             # =====================================================
-            # OUTPUT DF
+            # CREATE OUTPUT DF
             # =====================================================
 
             standardized_df = pd.DataFrame()
 
             for col in MASTER_COLUMNS:
-
                 standardized_df[col] = np.nan
 
             # =====================================================
-            # AUTO MAP
+            # AUTO MAPPING
             # =====================================================
 
             for output_col, aliases in ALIASES.items():
@@ -521,13 +552,8 @@ if uploaded_files:
                 )
 
                 if (
-
                     detected_col is not None
-
-                    and
-
-                    detected_col in df.columns
-
+                    and detected_col in df.columns
                 ):
 
                     standardized_df[output_col] = df[detected_col]
@@ -543,15 +569,11 @@ if uploaded_files:
             # =====================================================
 
             standardized_df["Loan Outstanding Amount"] = clean_money(
-
                 standardized_df["Loan Outstanding Amount"]
-
             )
 
             standardized_df["Sum Assured"] = clean_money(
-
                 standardized_df["Sum Assured"]
-
             )
 
             # =====================================================
@@ -577,21 +599,15 @@ if uploaded_files:
             # =====================================================
 
             standardized_df["Date of Birth (DDMMMYYYY)"] = clean_date(
-
                 standardized_df["Date of Birth (DDMMMYYYY)"]
-
             )
 
             standardized_df["Loan Disbursement Date (DDMMYYYY)"] = clean_date(
-
                 standardized_df["Loan Disbursement Date (DDMMYYYY)"]
-
             )
 
             standardized_df["Loan End date (DDMMYYYY)"] = clean_date(
-
                 standardized_df["Loan End date (DDMMYYYY)"]
-
             )
 
             # =====================================================
@@ -627,68 +643,37 @@ if uploaded_files:
             )
 
             # =====================================================
-            # LOAN TERM CALCULATION
+            # LOAN TERM
             # =====================================================
 
             start_date = pd.to_datetime(
-
-                standardized_df[
-                    "Loan Disbursement Date (DDMMYYYY)"
-                ],
-
+                standardized_df["Loan Disbursement Date (DDMMYYYY)"],
                 errors="coerce"
-
             )
 
             end_date = pd.to_datetime(
-
-                standardized_df[
-                    "Loan End date (DDMMYYYY)"
-                ],
-
+                standardized_df["Loan End date (DDMMYYYY)"],
                 errors="coerce"
-
-            )
-
-            valid_dates = (
-
-                start_date.notna()
-
-                &
-
-                end_date.notna()
-
             )
 
             months = np.where(
 
-                valid_dates,
+                start_date.notna() & end_date.notna(),
 
                 (
-
                     (end_date.dt.year - start_date.dt.year) * 12
-
                     +
-
                     (end_date.dt.month - start_date.dt.month)
-
                 ),
 
                 np.nan
 
             )
 
-            standardized_df["Loan Term (in months)"] = pd.to_numeric(
-                months,
-                errors="coerce"
-            )
+            standardized_df["Loan Term (in months)"] = months
 
-            standardized_df["Loan Term (Year)"] = pd.to_numeric(
-
-                standardized_df["Loan Term (in months)"] / 12,
-
-                errors="coerce"
-
+            standardized_df["Loan Term (Year)"] = (
+                standardized_df["Loan Term (in months)"] / 12
             ).round(1)
 
             # =====================================================
@@ -696,13 +681,11 @@ if uploaded_files:
             # =====================================================
 
             standardized_df["Mobile No"] = clean_mobile(
-
                 standardized_df["Mobile No"]
-
             )
 
             # =====================================================
-            # CLEAN ADDRESS FIELD
+            # CLEAN ADDRESS
             # =====================================================
 
             standardized_df["Address            (First Life)"] = np.where(
@@ -735,31 +718,7 @@ if uploaded_files:
 
                 .astype(str)
 
-                .str.fullmatch(r"\d+"),
-
-                np.nan,
-
-                standardized_df[
-                    "Address            (First Life)"
-                ]
-
-            )
-
-            standardized_df["Address            (First Life)"] = np.where(
-
-                standardized_df[
-                    "Address            (First Life)"
-                ]
-
-                .astype(str)
-
-                .str.contains(
-
-                    r"[A-Za-z]",
-
-                    regex=True
-
-                ),
+                .str.contains(r"[A-Za-z]", regex=True),
 
                 standardized_df[
                     "Address            (First Life)"
@@ -769,38 +728,12 @@ if uploaded_files:
 
             )
 
-            standardized_df["Address            (First Life)"] = np.where(
-
-                standardized_df[
-                    "Address            (First Life)"
-                ]
-
-                .astype(str)
-
-                ==
-
-                standardized_df[
-                    "Mobile No"
-                ]
-
-                .astype(str),
-
-                np.nan,
-
-                standardized_df[
-                    "Address            (First Life)"
-                ]
-
-            )
-
             # =====================================================
             # CLEAN PINCODE
             # =====================================================
 
             standardized_df["Pincode"] = clean_pincode(
-
                 standardized_df["Pincode"]
-
             )
 
             # =====================================================
@@ -808,15 +741,11 @@ if uploaded_files:
             # =====================================================
 
             standardized_df["MAIN MEMBER AGE"] = clean_age(
-
                 standardized_df["MAIN MEMBER AGE"]
-
             )
 
             standardized_df["Nominee Age"] = clean_age(
-
                 standardized_df["Nominee Age"]
-
             )
 
             # =====================================================
@@ -849,12 +778,7 @@ if uploaded_files:
             # AGE PROOF DETECTION
             # =====================================================
 
-            proof_found = False
-
             for col in df.columns:
-
-                if proof_found:
-                    break
 
                 cleaned = (
 
@@ -870,14 +794,18 @@ if uploaded_files:
 
                 if valid_mask.any():
 
-                    if col != detect_column(
+                    mobile_col = detect_column(
                         df.columns,
                         ALIASES["Mobile No"]
-                    ):
+                    )
 
-                        standardized_df["Type of    Age Proof"] = cleaned
+                    if col != mobile_col:
 
-                        proof_found = True
+                        standardized_df[
+                            "Type of    Age Proof"
+                        ] = cleaned
+
+                        break
 
             # =====================================================
             # PREMIUM CALCULATIONS
@@ -886,59 +814,38 @@ if uploaded_files:
             standardized_df["Rate"] = RATE_PER_LAKH
 
             standardized_df["Premium (Excl. GST)"] = (
-
-                standardized_df["Final SA"]
-
-                / 100000
-
+                standardized_df["Final SA"] / 100000
             ) * RATE_PER_LAKH
 
             standardized_df["GST amount"] = (
-
-                standardized_df["Premium (Excl. GST)"]
-
-                * GST_RATE
-
+                standardized_df["Premium (Excl. GST)"] * GST_RATE
             )
 
             standardized_df["Total Premium (incl GST)"] = (
-
                 standardized_df["Premium (Excl. GST)"]
-
                 +
-
                 standardized_df["GST amount"]
-
             )
 
-            standardized_df["Premium Excl. Gst"] = (
+            standardized_df["Premium Excl. Gst"] = standardized_df[
+                "Premium (Excl. GST)"
+            ]
 
-                standardized_df["Premium (Excl. GST)"]
+            standardized_df["GST"] = standardized_df[
+                "GST amount"
+            ]
 
-            )
-
-            standardized_df["GST"] = (
-
-                standardized_df["GST amount"]
-
-            )
-
-            standardized_df["Total Premium"] = (
-
-                standardized_df["Total Premium (incl GST)"]
-
-            )
+            standardized_df["Total Premium"] = standardized_df[
+                "Total Premium (incl GST)"
+            ]
 
             # =====================================================
             # SERIAL NUMBER
             # =====================================================
 
             standardized_df["Sr. no."] = range(
-
                 1,
-
                 len(standardized_df) + 1
-
             )
 
             # =====================================================
@@ -948,11 +855,8 @@ if uploaded_files:
             standardized_df = standardized_df[MASTER_COLUMNS]
 
             final_master_df = pd.concat(
-
                 [final_master_df, standardized_df],
-
                 ignore_index=True
-
             )
 
         except Exception as e:
@@ -973,14 +877,14 @@ if uploaded_files:
     final_master_df = final_master_df.fillna("")
 
     # =====================================================
-    # SAFE DISPLAY
+    # DISPLAY
     # =====================================================
-
-    display_df = final_master_df.astype(str)
 
     st.markdown("---")
 
     st.subheader("📋 Final Output")
+
+    display_df = final_master_df.astype(str)
 
     st.dataframe(
         display_df,
