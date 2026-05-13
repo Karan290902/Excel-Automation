@@ -377,6 +377,10 @@ if uploaded_files:
 
         try:
 
+            # =====================================================
+            # READ RAW FILE
+            # =====================================================
+
             raw_df = pd.read_excel(
                 file,
                 header=None
@@ -404,6 +408,10 @@ if uploaded_files:
                     header_row = i
                     break
 
+            # =====================================================
+            # READ FILE AGAIN
+            # =====================================================
+
             df = pd.read_excel(
                 file,
                 header=header_row
@@ -422,6 +430,10 @@ if uploaded_files:
 
             df = remove_total_rows(df)
 
+            # =====================================================
+            # CLEAN COLUMN NAMES
+            # =====================================================
+
             df.columns = [
 
                 str(col)
@@ -433,19 +445,24 @@ if uploaded_files:
 
             ]
 
+            # =====================================================
+            # OUTPUT DF
+            # =====================================================
+
             standardized_df = pd.DataFrame()
 
             for col in MASTER_COLUMNS:
                 standardized_df[col] = np.nan
 
             # =====================================================
-            # SIMPLE MAPPING UI
+            # INPUT TO OUTPUT MAPPING UI
             # =====================================================
 
-            st.markdown("### 🎯 Verify Important Field Mapping")
+            st.markdown("### 🎯 Map Input Fields to Output Fields")
 
-            important_fields = [
+            important_output_fields = [
 
+                "",
                 "Loan Account No.",
                 "Name of Primary Loan borrower",
                 "Gender",
@@ -460,45 +477,63 @@ if uploaded_files:
                 "Sum Assured",
                 "Loan Disbursement Date (DDMMYYYY)",
                 "Loan End date (DDMMYYYY)",
-                "Address            (First Life)"
+                "Address            (First Life)",
+                "Address 1            (First Life)",
+                "Email Id"
 
             ]
 
             mapping_selection = {}
 
-            input_options = [""] + list(df.columns)
+            input_columns = list(df.columns)
 
-            for i in range(0, len(important_fields), 3):
+            for i in range(0, len(input_columns), 3):
 
                 cols = st.columns(3)
 
                 for j in range(3):
 
-                    if i + j < len(important_fields):
+                    if i + j < len(input_columns):
 
-                        field = important_fields[i + j]
+                        input_col = input_columns[i + j]
 
-                        detected_col = detect_column(
-                            df.columns,
-                            ALIASES.get(field, [])
-                        )
+                        suggested_output = ""
+
+                        # =====================================================
+                        # AUTO SUGGEST
+                        # =====================================================
+
+                        for output_field, aliases in ALIASES.items():
+
+                            detected = detect_column(
+                                [input_col],
+                                aliases
+                            )
+
+                            if detected is not None:
+
+                                suggested_output = output_field
+                                break
 
                         default_index = 0
 
-                        if detected_col in input_options:
-                            default_index = input_options.index(detected_col)
+                        if suggested_output in important_output_fields:
+
+                            default_index = important_output_fields.index(
+                                suggested_output
+                            )
 
                         with cols[j]:
 
-                            mapping_selection[field] = st.selectbox(
+                            mapping_selection[input_col] = st.selectbox(
 
-                                field,
+                                f"📥 {input_col}",
 
-                                input_options,
+                                important_output_fields,
 
                                 index=default_index,
 
-                                key=f"{file.name}_{field}"
+                                key=f"{file.name}_{input_col}"
 
                             )
 
@@ -506,63 +541,11 @@ if uploaded_files:
             # APPLY VERIFIED MAPPING
             # =====================================================
 
-            for output_col, selected_col in mapping_selection.items():
+            for input_col, output_col in mapping_selection.items():
 
-                if selected_col != "":
-                    standardized_df[output_col] = df[selected_col]
+                if output_col != "":
 
-            # =====================================================
-            # COMPULSORY OUTPUT FIELDS
-            # =====================================================
-
-            compulsory_fields = [
-
-                "Loan Type",
-                "Loan Account No.",
-                "Name of Primary Loan borrower",
-                "Gender",
-                "Date of Birth (DDMMMYYYY)",
-                "Type of    Age Proof",
-                "Address            (First Life)",
-                "Address 1            (First Life)",
-                "Address 2            (First Life)",
-                "Pincode",
-                "Mobile No",
-                "Email Id",
-                "Nominee Name",
-                "Relationship of the Nominee with Insurance covered Person",
-                "Nominee Age",
-                "Loan Outstanding Amount",
-                "Sum Assured",
-                "Loan Disbursement Date (DDMMYYYY)",
-                "Loan End date (DDMMYYYY)",
-                "Loan Term (in months)",
-                "Loan Term (Year)",
-                "MAIN MEMBER AGE",
-                "Aviva Calculation SA",
-                "Premium Excl. Gst",
-                "GST",
-                "Total Premium"
-
-            ]
-
-            for field in compulsory_fields:
-
-                if field in standardized_df.columns:
-
-                    if standardized_df[field].isna().all():
-
-                        detected_col = detect_column(
-                            df.columns,
-                            ALIASES.get(field, [])
-                        )
-
-                        if (
-                            detected_col is not None
-                            and detected_col in df.columns
-                        ):
-
-                            standardized_df[field] = df[detected_col]
+                    standardized_df[output_col] = df[input_col]
 
             # =====================================================
             # LOAN TYPE
